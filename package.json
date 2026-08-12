@@ -1,0 +1,17 @@
+{
+  "name": "bible-memory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Verse by Heart — a scripture memorization page",
+  "type": "module",
+  "scripts": {
+    "test": "node test/verify-kjv.mjs && node test/ui.mjs",
+    "test:kjv": "node test/verify-kjv.mjs",
+    "test:ui": "node test/ui.mjs",
+    "shots": "node test/shots.mjs"
+  },
+  "devDependencies": {
+    "kjv": "^1.0.0",
+    "playwright": "^1.62.1"
+  }
+}
