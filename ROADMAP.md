@@ -43,6 +43,15 @@ the whole product.
   migration for `verse-by-heart:v1` with a test that loads a v1 payload and
   comes out intact. Do this *before* it is needed, not during.
 
+- [ ] **Bound the recite-alignment input.** `align()` in `src/app.js` runs an
+  O(n·m) LCS over the reference and typed words with no size cap. Custom verse
+  creation and import both accept arbitrary-length text, so a large pasted
+  passage plus a long attempt can allocate a very large matrix in the tab.
+  Enforce a shared word-count limit before `compare()` runs, across manual
+  entry, import, and anything already in storage. (Flagged by CodeRabbit on
+  PR #1; pre-existing behaviour, not a regression from the `src/` extraction —
+  scoped out of that PR to keep it a pure refactor.)
+
 ## Later — needs a decision from Kevin first
 
 These are blocked on choices only he can make. Do not start them unsolicited;
