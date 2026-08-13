@@ -7,6 +7,17 @@ self-contained page, published as a Claude Artifact.
 Republishing must pass that URL as the `url` argument, or it creates a second
 artifact and the user's link goes stale.
 
+## Source layout
+
+`index.html` is generated, not hand-edited. The sources live in `src/`:
+`src/style.css`, `src/markup.html`, `src/app.js`. Edit those, then run
+`npm run build` to reassemble `index.html` — `build.mjs` is a zero-dependency
+Node script (no bundler, no runtime dependency added). `test/build.mjs` fails
+if `index.html` and a fresh build of `src/` disagree, so a forgotten build
+before commit shows up as a test failure, not a silent drift. Always run
+`npm run build` and commit the regenerated `index.html` alongside any `src/`
+change — the Artifact publishes `index.html` itself, not `src/`.
+
 ## The idea the design rests on
 
 The verse keeps its exact layout in every mode while the ink drains out of it.
@@ -56,7 +67,8 @@ styling detail.
 
 ```sh
 npm install     # npm is reachable; this is fine to run every session
-npm test        # KJV fidelity + UI behaviour, ~150 checks
+npm test        # build fidelity + KJV fidelity + UI behaviour, ~150 checks
+npm run build   # regenerate index.html from src/ after editing src/
 ```
 
 `test/` is mutation-tested — every check in it fails when the behaviour it

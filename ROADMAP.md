@@ -14,14 +14,6 @@ the whole product.
 
 ## Now
 
-- [ ] **Extract `src/` and add a build step.** `index.html` is ~1,600 lines of
-  markup, CSS, and JS in one file, which is the ceiling on everything below.
-  Split into `src/` modules and add a zero-dependency bundler script that inlines
-  everything back into a single `index.html`. The build output must stay
-  byte-for-byte publishable and keep `npm test` green — the tests run against the
-  built file, not the sources. This is the bridge between "one page" and "real
-  app": every later feature lands in `src/`, and the Artifact keeps working.
-
 - [ ] **Spaced repetition.** Practice history is already stored but only drives a
   streak strip. Add an SM-2-style scheduler: grade each recite attempt into an
   interval, surface a "due today" queue, and open on the queue rather than the
@@ -74,3 +66,7 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
   progress, export/import, both themes. *(2026-08-11)*
 - [x] Test suite: KJV fidelity against the 1769 text plus UI behaviour, ~150
   checks, mutation-tested. *(2026-08-12)*
+- [x] Extract `src/` and add a build step. `index.html` is generated from
+  `src/style.css`, `src/markup.html`, and `src/app.js` by a zero-dependency
+  `build.mjs`; `test/build.mjs` fails the build if the two drift.
+  *(2026-08-13)*

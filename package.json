@@ -5,9 +5,11 @@
   "description": "Verse by Heart — a scripture memorization page",
   "type": "module",
   "scripts": {
-    "test": "node test/verify-kjv.mjs && node test/ui.mjs",
+    "build": "node build.mjs",
+    "test": "node test/build.mjs && node test/verify-kjv.mjs && node test/ui.mjs",
     "test:kjv": "node test/verify-kjv.mjs",
     "test:ui": "node test/ui.mjs",
+    "test:build": "node test/build.mjs",
     "shots": "node test/shots.mjs"
   },
   "devDependencies": {
