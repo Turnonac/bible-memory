@@ -20,7 +20,7 @@ export function buildPage() {
   return title + "<style>\n" + css + "</style>\n\n" + markup + "<script>\n" + js + "</script>\n";
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const page = buildPage();
   fs.writeFileSync(path.join(ROOT, "index.html"), page);
   console.log("Built index.html (" + page.length + " bytes) from src/.");
