@@ -1,0 +1,103 @@
+<div class="wrap">
+  <header class="masthead">
+    <h1 class="wordmark">Verse <span class="by">by</span> Heart</h1>
+    <p>Learn a passage by watching the ink drain out of it, one word at a time.</p>
+    <div class="tally" id="tally"></div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="reference">
+      <h2 id="ref"></h2>
+      <span class="seal" id="seal" hidden>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+          <path d="M2.5 8.5 6 12l7.5-8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Mastered
+      </span>
+    </div>
+
+    <div class="verse" id="verse"></div>
+
+    <div class="recite" id="recite" hidden>
+      <label class="sr-only" for="attempt">Type the verse from memory</label>
+      <textarea id="attempt" placeholder="Type it out from memory. Punctuation and capitals don't count against you."></textarea>
+      <div class="row">
+        <button class="btn primary" id="check">Check my recall</button>
+        <button class="btn quiet" id="peekBtn">Show the verse</button>
+        <span class="caption" id="reciteNote" style="font-family:var(--mono);font-size:.625rem;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint)"></span>
+      </div>
+      <div class="result" id="result" hidden aria-live="polite">
+        <div class="scoreline">
+          <span class="pct" id="pct"></span>
+          <span class="caption">recall accuracy</span>
+          <div class="breakdown" id="breakdown"></div>
+        </div>
+        <div class="verse marked" id="marked"></div>
+        <div class="legend">
+          <span><i style="background:var(--verdigris)"></i>Exact</span>
+          <span><i style="background:var(--orpiment)"></i>Near miss</span>
+          <span><i style="background:var(--madder)"></i>Missed</span>
+          <span><i style="background:var(--ink-faint)"></i>Not in the verse</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modes">
+      <div class="switch" id="switch" role="group" aria-label="Practice mode">
+        <button data-mode="read" aria-pressed="true">Read</button>
+        <button data-mode="veil" aria-pressed="false">Veil</button>
+        <button data-mode="initials" aria-pressed="false">Initials</button>
+        <button data-mode="recite" aria-pressed="false">Recite</button>
+      </div>
+      <div class="steps spacer" id="veilControls" hidden>
+        <span class="label">Ink hidden</span>
+        <div class="seg" id="veilSeg" role="group" aria-label="Portion of words hidden"></div>
+        <button class="btn quiet" id="reshuffle">New blanks</button>
+      </div>
+    </div>
+    <p class="hint" id="hint"></p>
+  </main>
+
+  <section class="deck">
+    <div class="deck-head">
+      <h2>Your deck</h2>
+      <div class="tools">
+        <button class="btn" id="exportBtn">Export</button>
+        <button class="btn" id="importBtn">Import</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+
+    <div class="streak">
+      <div class="label" id="streakLabel"></div>
+      <div class="days" id="streakDays"></div>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <details class="add">
+      <summary>Add a verse of your own</summary>
+      <form class="form" id="addForm">
+        <div>
+          <label for="newRef">Reference</label>
+          <input id="newRef" placeholder="Psalm 27:1" autocomplete="off">
+        </div>
+        <div>
+          <label for="newText">Verse text</label>
+          <textarea id="newText" placeholder="The LORD is my light and my salvation; whom shall I fear?"></textarea>
+        </div>
+        <p class="err" id="addErr"></p>
+        <div class="actions">
+          <button class="btn primary" type="submit">Add to deck</button>
+          <button class="btn quiet" type="button" id="clearAdd">Clear</button>
+        </div>
+      </form>
+    </details>
+
+    <footer class="colophon">
+      <span>Starter passages are King James Version, public domain.</span>
+      <span>Progress is saved in this browser only &mdash; export to keep a copy.</span>
+    </footer>
+  </section>
+</div>
+
