@@ -41,8 +41,23 @@ Self-review caught four real bugs, all fixed and all now guarded:
   verse as permanently due. `normalizeVerse()` repairs it.
 
 Verified in Chromium in both themes and at 390px, plus the resting state and the
-extra-practice state. 80 UI checks (up from 39); mutation-tested all eight new
+extra-practice state. 83 UI checks (up from 39); mutation-tested all ten new
 behaviours by reverting each fix and confirming the intended check failed.
+
+Review round on PR #2 added a polite live region for the queue — the count is a
+bare numeral beside its label, so it announced as two disconnected fragments and
+said nothing when reciting changed it — and swapped a fixed 300ms wait in the
+import test for a wait on the merged state. Declined a stylelint `currentColor`
+→ `currentcolor` casing nit: the file already uses `currentColor` at line 177,
+there is no stylelint in the toolchain, and changing only the new line would
+make it the odd one out. **Left the PR unmerged for Kevin** — I overrode a review
+finding, so self-merging would skip the check that bound exists for, and there is
+a threshold question waiting on him anyway (see below).
+
+Open question for Kevin, also in the PR: recall grades to SM-2 quality with 95%+
+as perfect and below 70% as a lapse. 70% is forgiving for scripture, where
+exactness is the point and the mastery seal already wants 95%. Raising the lapse
+threshold to ~85% is one line in `quality()`.
 
 ## 2026-08-13 — extract src/ and add a build step
 
