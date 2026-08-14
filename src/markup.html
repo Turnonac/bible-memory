@@ -70,11 +70,12 @@
     </div>
 
     <div class="queue" id="queue">
-      <span class="n" id="queueN">0</span>
-      <span class="queue-text">
+      <span class="n" id="queueN" aria-hidden="true">0</span>
+      <span class="queue-text" aria-hidden="true">
         <span class="queue-label" id="queueLabel"></span>
         <span class="queue-sub" id="queueSub"></span>
       </span>
+      <span class="sr-only" id="queueSays" aria-live="polite"></span>
       <button class="btn primary" id="queueGo">Review now</button>
     </div>
 

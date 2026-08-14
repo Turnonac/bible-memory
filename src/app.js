@@ -604,6 +604,12 @@
         ? next.ref + " comes back round " + inDays(daysUntil(next.due)) + "."
         : "Recite a verse to start its schedule.";
     }
+    // The count reads as a bare numeral beside its label, which announces as two
+    // disconnected fragments. Carry the whole sentence in one polite live region
+    // instead, and hide the visual pieces from the accessibility tree.
+    $("queueSays").textContent = (due.length
+      ? due.length + (due.length === 1 ? " verse due. " : " verses due. ")
+      : "Nothing due. ") + $("queueSub").textContent;
   }
 
   function renderAll() {

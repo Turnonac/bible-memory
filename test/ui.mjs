@@ -249,6 +249,18 @@ for (const scheme of ["light", "dark"]) {
     check("the queue is not in its resting state when work is waiting",
       !(await page.getAttribute("#queue", "class")).includes("rest"));
     check("the review button is offered when verses are due", await page.isVisible("#queueGo"));
+
+    // The count is a bare numeral next to its label, which announces as two
+    // disconnected fragments; one live region carries the whole sentence.
+    const says = await page.textContent("#queueSays");
+    check(`the queue announces its count as a sentence (got "${says}")`,
+      says.includes(String(cards)) && /verses? due/.test(says));
+    const live = await page.evaluate(() => {
+      const r = document.getElementById("queueSays");
+      return { live: r.getAttribute("aria-live"), hiddenTwin: document.getElementById("queueN").getAttribute("aria-hidden") };
+    });
+    eq("...from a polite live region", live.live, "polite");
+    eq("...with the visual count hidden from screen readers", live.hiddenTwin, "true");
     await ctx.close();
   }
 
@@ -408,7 +420,10 @@ for (const scheme of ["light", "dark"]) {
 
     const { ctx, page } = await withState(LOCAL);
     await page.setInputFiles("#importFile", f);
-    await page.waitForTimeout(300);
+    // The import lands via FileReader.onload, so wait on the merged state rather
+    // than a fixed delay that a slow machine can outrun.
+    await page.waitForFunction(() =>
+      JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses[0].recent.length === 3);
     const merged = await page.evaluate(() => JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses[0]);
     eq("importing a newer session takes its scores", merged.recent.join(), "99,99,20");
     // The scores and the schedule they produced must not be split: recording the

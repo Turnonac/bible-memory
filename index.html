@@ -715,11 +715,12 @@
     </div>
 
     <div class="queue" id="queue">
-      <span class="n" id="queueN">0</span>
-      <span class="queue-text">
+      <span class="n" id="queueN" aria-hidden="true">0</span>
+      <span class="queue-text" aria-hidden="true">
         <span class="queue-label" id="queueLabel"></span>
         <span class="queue-sub" id="queueSub"></span>
       </span>
+      <span class="sr-only" id="queueSays" aria-live="polite"></span>
       <button class="btn primary" id="queueGo">Review now</button>
     </div>
 
@@ -1363,6 +1364,12 @@
         ? next.ref + " comes back round " + inDays(daysUntil(next.due)) + "."
         : "Recite a verse to start its schedule.";
     }
+    // The count reads as a bare numeral beside its label, which announces as two
+    // disconnected fragments. Carry the whole sentence in one polite live region
+    // instead, and hide the visual pieces from the accessibility tree.
+    $("queueSays").textContent = (due.length
+      ? due.length + (due.length === 1 ? " verse due. " : " verses due. ")
+      : "Nothing due. ") + $("queueSub").textContent;
   }
 
   function renderAll() {
