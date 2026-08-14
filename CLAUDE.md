@@ -30,6 +30,10 @@ Four modes: Read, Veil (hide 25/50/75/100%, levels nest so raising the veil
 keeps what was already hidden), Initials (first letters only), Recite (type from
 memory, graded by LCS word alignment).
 
+A recall score grades into an SM-2 interval, so the deck schedules itself: each
+verse carries `ease`, `reps`, `interval`, and `due`, the review queue above the
+deck says what is waiting, and the page opens on that queue.
+
 Revealing a hidden word restores it in rubric red and it stays red, so a finished
 drill shows exactly which words needed help. That marking is a feature, not a
 styling detail.
@@ -50,6 +54,17 @@ styling detail.
   inside a media or `[data-theme]` block never applies in the un-stamped state.
 - **Progress is the user's.** `localStorage` under `verse-by-heart:v1`. Changing
   the shape requires a migration path — people have real practice history in it.
+  The key name is now fixed; the payload carries its own `schema` number instead,
+  and `migrate()` in `src/app.js` upgrades anything older on load. Bump `SCHEMA`,
+  add a branch to `migrate()`, and add a test that loads the *old* payload and
+  comes out intact — `test/ui.mjs` already does this for v1. Everything read off
+  disk goes through `normalizeVerse()` first, so a hand-edited or truncated field
+  can't reach the scheduler.
+
+- **Only a due review moves the schedule.** Reciting a verse that isn't due yet
+  is practice: it counts as an attempt and feeds the streak, but it must not
+  advance the SM-2 ladder. Grading every press compounds the interval — four taps
+  of "Check my recall" would file a fresh verse six weeks out. There is a test.
 
 ## Traps already hit once
 
