@@ -14,12 +14,6 @@ the whole product.
 
 ## Now
 
-- [ ] **Spaced repetition.** Practice history is already stored but only drives a
-  streak strip. Add an SM-2-style scheduler: grade each recite attempt into an
-  interval, surface a "due today" queue, and open on the queue rather than the
-  first verse in the deck. This is the single biggest lever on whether anyone
-  actually memorizes anything.
-
 - [ ] **Recite aloud.** Memorization is oral; typing is a proxy. Use the Web
   Speech API for a spoken-recall mode — prompt with the reference, listen, and
   run the same word-alignment grading over the transcript. Degrade cleanly where
@@ -39,9 +33,15 @@ the whole product.
 - [ ] **Printable drill sheets.** A print stylesheet emitting veiled and
   first-letter worksheets. Memorization happens away from screens.
 
-- [ ] **Storage migration path.** Before any schema change ships, add versioned
-  migration for `verse-by-heart:v1` with a test that loads a v1 payload and
-  comes out intact. Do this *before* it is needed, not during.
+- [ ] **Work the queue without going back to it.** Grading a due verse leaves you
+  on that verse; getting to the next one means scrolling to the deck and pressing
+  "Review now" again. A session should hand you the next due verse when you
+  finish one, and say so when the queue empties.
+
+- [ ] **The deck grid leaves a gap on a small deck.** `.cards` is an `auto-fill`
+  grid over a ruled background, so a deck of one or two verses shows a wide empty
+  band of `--rule` beside them. Pre-existing, only visible once you remove most
+  of the starter deck. Cheap fix, worth doing alongside other deck work.
 
 - [ ] **Bound the recite-alignment input.** `align()` in `src/app.js` runs an
   O(n·m) LCS over the reference and typed words with no size cap. Custom verse
@@ -79,3 +79,11 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
   `src/style.css`, `src/markup.html`, and `src/app.js` by a zero-dependency
   `build.mjs`; `test/build.mjs` fails the build if the two drift.
   *(2026-08-13)*
+- [x] Spaced repetition. Recall scores grade into an SM-2 interval; a review
+  queue above the deck says what's waiting and the page opens on it. Only a
+  review that was actually due advances the ladder. *(2026-08-14)*
+- [x] Storage migration path. The payload carries a `schema` number and
+  `migrate()` upgrades older ones on load; v1 practice history replays through
+  the same scheduler to derive a starting schedule. Shipped with spaced
+  repetition rather than before it, since that was the first schema change.
+  *(2026-08-14)*

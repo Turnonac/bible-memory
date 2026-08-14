@@ -217,6 +217,290 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ scheduling ================================ */
+{
+  // Boot the page with a given payload already in storage.
+  const withState = async payload => {
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on("pageerror", e => errors.push(String(e)));
+    await page.goto(url);
+    if (payload) {
+      await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), payload);
+      await page.reload();
+    }
+    return { ctx, page, errors };
+  };
+
+  const verse = (over) => Object.assign({
+    id: "v" + over.ref.replace(/\W/g, ""), source: "kjv",
+    attempts: 0, best: 0, last: null, recent: []
+  }, over);
+
+  const GEN = "In the beginning God created the heaven and the earth.";
+  const PSA = "God is our refuge and strength, a very present help in trouble.";
+
+  /* --- a fresh deck is entirely due, and the queue says so --- */
+  {
+    const { ctx, page } = await withState(null);
+    const cards = await page.$$eval(".card", n => n.length);
+    eq("a fresh deck is all due", await page.textContent("#queueN"), String(cards));
+    check("the queue is not in its resting state when work is waiting",
+      !(await page.getAttribute("#queue", "class")).includes("rest"));
+    check("the review button is offered when verses are due", await page.isVisible("#queueGo"));
+    await ctx.close();
+  }
+
+  /* --- the SM-2 ladder lengthens with each clean pass, and a lapse resets it --- */
+  {
+    const { ctx, page, errors } = await withState(null);
+    await page.click('.card .open:has-text("Philippians 4:13")');
+    await page.click('button[data-mode="recite"]');
+    const VERSE = "I can do all things through Christ which strengtheneth me.";
+    const recite = async text => {
+      await page.fill("#attempt", text);
+      await page.click("#check");
+      return page.textContent("#nextUp");
+    };
+    // Come back on the day the verse next falls due. Only a due review advances
+    // the ladder, so the rungs can only be climbed one sitting at a time.
+    const comeBackWhenDue = async () => {
+      await page.evaluate(() => {
+        const s = JSON.parse(localStorage.getItem("verse-by-heart:v1"));
+        const t = new Date();
+        s.verses.find(v => v.ref === "Philippians 4:13").due =
+          t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+        localStorage.setItem("verse-by-heart:v1", JSON.stringify(s));
+      });
+      await page.reload();
+      await page.click('.card .open:has-text("Philippians 4:13")');
+      await page.click('button[data-mode="recite"]');
+    };
+
+    // SM-2's opening rungs are fixed at 1 day then 6 days; only after that does
+    // the interval start multiplying by the ease factor.
+    check("a first clean pass is filed for tomorrow",
+      (await recite(VERSE)).includes("tomorrow"), await page.textContent("#nextUp"));
+    await comeBackWhenDue();
+    check("a second clean pass jumps to six days",
+      (await recite(VERSE)).includes("in 6 days"), await page.textContent("#nextUp"));
+    await comeBackWhenDue();
+    check("a third clean pass multiplies out past a fortnight",
+      (await recite(VERSE)).includes("weeks"), await page.textContent("#nextUp"));
+
+    // A failed recall must drop the verse back to the bottom rung, or a verse
+    // you've forgotten would stay parked weeks out.
+    await comeBackWhenDue();
+    check("a failed recall comes back tomorrow, not weeks out",
+      (await recite("zzz qqq www")).includes("another pass"), await page.textContent("#nextUp"));
+
+    const sched = await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem("verse-by-heart:v1"));
+      return s.verses.find(v => v.ref === "Philippians 4:13");
+    });
+    eq("a lapse resets the repetition count", sched.reps, 0);
+    check(`a lapse drives the ease factor down (got ${sched.ease})`, sched.ease < 2.5);
+    check(`the ease factor never falls below SM-2's floor (got ${sched.ease})`, sched.ease >= 1.3);
+    check("scheduling raised no page errors", errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
+
+  /* --- reciting removes a verse from the due queue --- */
+  {
+    const { ctx, page } = await withState(null);
+    const before = Number(await page.textContent("#queueN"));
+    await page.click('.card .open:has-text("Philippians 4:13")');
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", "I can do all things through Christ which strengtheneth me.");
+    await page.click("#check");
+    eq("a recited verse leaves the due queue", Number(await page.textContent("#queueN")), before - 1);
+    const chip = await page.textContent('.card:has-text("Philippians 4:13") .when');
+    eq("its card now shows when it comes back", chip.trim(), "1d");
+    await ctx.close();
+  }
+
+  /* --- drilling the same verse again in one sitting is practice, not a review --- */
+  {
+    // Grading every press would compound the interval: four clean taps on a
+    // fresh verse would file it six weeks out on the strength of one sitting.
+    const { ctx, page } = await withState(null);
+    await page.click('.card .open:has-text("Philippians 4:13")');
+    await page.click('button[data-mode="recite"]');
+    const VERSE = "I can do all things through Christ which strengtheneth me.";
+    for (let i = 0; i < 4; i++) {
+      await page.fill("#attempt", VERSE);
+      await page.click("#check");
+    }
+    const v = await page.evaluate(() => JSON.parse(localStorage.getItem("verse-by-heart:v1"))
+      .verses.find(x => x.ref === "Philippians 4:13"));
+    eq("every run in a sitting still counts as an attempt", v.attempts, 4);
+    eq("...but only the review that was due moves the schedule", v.interval, 1);
+    eq("...so the repetition count advances once, not four times", v.reps, 1);
+    check("...and the page names the extra runs as practice",
+      (await page.textContent("#nextUp")).includes("Extra practice"), await page.textContent("#nextUp"));
+    await ctx.close();
+  }
+
+  /* --- an overdue review outranks a verse never started --- */
+  {
+    const OVERDUE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN }),                       // never studied
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 2, best: 90, last: "2020-01-01",
+                recent: [90], ease: 2.5, reps: 2, interval: 6, due: "2020-01-07" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(OVERDUE);
+    check("a long-overdue review is offered before an unstudied verse",
+      (await page.textContent("#queueSub")).includes("Psalm 46:1"),
+      await page.textContent("#queueSub"));
+    await ctx.close();
+  }
+
+  /* --- a corrupt schedule can't park a verse as permanently due --- */
+  {
+    // reps without an interval multiplies out to zero for ever.
+    const BROKEN = {
+      schema: 2,
+      verses: [verse({ ref: "Genesis 1:1", text: GEN, attempts: 3, best: 90, last: "2020-01-01",
+                       recent: [90], ease: 2.5, reps: 3, interval: 0, due: "2020-01-01" })],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(BROKEN);
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", GEN);
+    await page.click("#check");
+    const v = await page.evaluate(() => JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses[0]);
+    check(`a repaired schedule moves off today (interval ${v.interval})`, v.interval >= 1);
+    check("a repaired verse leaves the due queue", (await page.textContent("#queueN")) === "0");
+    await ctx.close();
+  }
+
+  /* --- importing a more recent session brings its schedule with it --- */
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vbh-sched-"));
+    const key = n => {
+      const t = new Date();
+      t.setDate(t.getDate() + n);
+      return t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+    };
+    // Here the verse is comfortably filed three weeks out...
+    const LOCAL = {
+      schema: 2,
+      verses: [verse({ ref: "Genesis 1:1", text: GEN, attempts: 5, best: 99, last: key(-10),
+                       recent: [99, 99, 99], ease: 2.7, reps: 4, interval: 30, due: key(20) })],
+      activeId: "vGenesis11", history: {}
+    };
+    // ...but on the other device it was failed yesterday.
+    const OTHER = {
+      schema: 2,
+      verses: [verse({ ref: "Genesis 1:1", text: GEN, attempts: 7, best: 99, last: key(-1),
+                       recent: [99, 99, 20], ease: 1.9, reps: 0, interval: 1, due: key(0) })],
+      activeId: "vGenesis11", history: {}
+    };
+    const f = path.join(dir, "other.json");
+    fs.writeFileSync(f, JSON.stringify(OTHER));
+
+    const { ctx, page } = await withState(LOCAL);
+    await page.setInputFiles("#importFile", f);
+    await page.waitForTimeout(300);
+    const merged = await page.evaluate(() => JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses[0]);
+    eq("importing a newer session takes its scores", merged.recent.join(), "99,99,20");
+    // The scores and the schedule they produced must not be split: recording the
+    // lapse while keeping the old month-long interval buries the verse.
+    eq("...and the schedule those scores produced", merged.reps, 0);
+    check("...so the lapsed verse actually comes back round",
+      (await page.textContent("#queueN")) === "1", "due count " + await page.textContent("#queueN"));
+    eq("cumulative attempt counts still take the higher of the two", merged.attempts, 7);
+    await ctx.close();
+  }
+
+  /* --- v1 payloads (no schedule at all) survive the upgrade --- */
+  {
+    // Real practice history lives in these payloads; losing it is unacceptable.
+    const V1 = {
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 4, best: 97, last: "2020-01-01", recent: [96, 97] }),
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 1, best: 30, last: "2020-01-01", recent: [30] })
+      ],
+      activeId: "vGenesis11",
+      history: { "2020-01-01": 5 }
+    };
+    const { ctx, page, errors } = await withState(V1);
+
+    eq("a v1 payload keeps every verse", await page.$$eval(".card", n => n.length), 2);
+    check("a v1 payload keeps its recorded scores",
+      (await page.textContent('.card:has-text("Genesis 1:1") .stat')).includes("best 97% · 4×"));
+    check("a v1 payload keeps its streak history",
+      (await page.textContent("#streakLabel")).length > 0);
+    check("v1 verses last practised years ago come up due",
+      (await page.textContent("#queueN")) === "2");
+
+    // Selecting a verse persists, which is when the upgraded shape hits disk.
+    await page.click('.card .open:has-text("Psalm 46:1")');
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("verse-by-heart:v1")));
+    eq("the upgraded payload is stamped with its schema version", stored.schema, 2);
+    const gen = stored.verses.find(v => v.ref === "Genesis 1:1");
+    const psa = stored.verses.find(v => v.ref === "Psalm 46:1");
+    eq("two clean recorded scores replay to two repetitions", gen.reps, 2);
+    eq("...and to SM-2's six-day rung", gen.interval, 6);
+    eq("a recorded failure replays to a reset schedule", psa.reps, 0);
+    check(`a recorded failure replays a reduced ease (got ${psa.ease})`, psa.ease < 2.5);
+    check("migration raised no page errors", errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
+
+  /* --- the page opens on the queue, not wherever you stopped --- */
+  {
+    const FUTURE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 3, best: 99, last: "2026-01-01",
+                recent: [99], ease: 2.6, reps: 4, interval: 400, due: "2099-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 1, best: 80, last: "2020-01-01",
+                recent: [80], ease: 2.5, reps: 1, interval: 1, due: "2020-01-02" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(FUTURE);
+    const activeRef = await page.textContent(".card.active .ref");
+    check(`the page opens on a due verse, not the stored one (got ${activeRef.trim()})`,
+      activeRef.includes("Psalm 46:1"));
+    eq("only the due verse is counted", await page.textContent("#queueN"), "1");
+    const chip = await page.textContent('.card:has-text("Genesis 1:1") .when');
+    check(`a far-future verse shows its wait, not "due" (got ${chip.trim()})`, chip.trim() !== "due");
+    await ctx.close();
+  }
+
+  /* --- nothing due reads as rest, not as an empty error state --- */
+  {
+    const RESTING = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 3, best: 99, last: "2026-01-01",
+                recent: [99], ease: 2.6, reps: 4, interval: 400, due: "2099-01-01" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(RESTING);
+    eq("nothing due shows a zero count", await page.textContent("#queueN"), "0");
+    check("the queue switches to its resting state",
+      (await page.getAttribute("#queue", "class")).includes("rest"));
+    check("the review button is withdrawn when nothing is due",
+      !(await page.isVisible("#queueGo")));
+    check("the resting queue says what comes next",
+      (await page.textContent("#queueSub")).includes("Genesis 1:1"));
+    await ctx.close();
+  }
+}
+
 /* ============================ layout and a11y =========================== */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });

@@ -32,6 +32,7 @@
           <span class="caption">recall accuracy</span>
           <div class="breakdown" id="breakdown"></div>
         </div>
+        <p class="nextup" id="nextUp"></p>
         <div class="verse marked" id="marked"></div>
         <div class="legend">
           <span><i style="background:var(--verdigris)"></i>Exact</span>
@@ -66,6 +67,15 @@
         <button class="btn" id="importBtn">Import</button>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
       </div>
+    </div>
+
+    <div class="queue" id="queue">
+      <span class="n" id="queueN">0</span>
+      <span class="queue-text">
+        <span class="queue-label" id="queueLabel"></span>
+        <span class="queue-sub" id="queueSub"></span>
+      </span>
+      <button class="btn primary" id="queueGo">Review now</button>
     </div>
 
     <div class="streak">

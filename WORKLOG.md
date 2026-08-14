@@ -3,6 +3,47 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-14 — spaced repetition
+
+Merged PR #1 first: it was open from the previous run, green (153/153), a pure
+byte-for-byte refactor, and both review threads were settled — one fixed in
+5f84dbc, one deliberately deferred to `ROADMAP.md` with CodeRabbit agreeing.
+Fixing an open PR beats starting new work, and this one only needed merging.
+
+Then built the scheduler. Each verse now carries `ease`, `reps`, `interval`, and
+`due`; a recall score grades onto SM-2's 0–5 quality scale (95%+ = 5, below 70%
+lapses) and climbs the 1-day / 6-day / ×ease ladder. A review queue sits above
+the deck, cards show a `due` or `6d` chip, and the page opens on the queue
+instead of wherever you stopped — unless the verse you left open is itself due,
+so a reload mid-drill doesn't move you.
+
+**The schema change forced the migration item early, so it shipped too.** The
+key stays `verse-by-heart:v1`; the payload now carries a `schema` number and
+`migrate()` upgrades anything older on load. v1 data has practice history but no
+schedule, so migration replays the recorded scores through the same `step()` a
+live attempt runs and anchors the result to the day that verse was last
+practised — nothing invented, one implementation of the ladder.
+
+Self-review caught four real bugs, all fixed and all now guarded:
+
+- **Every press graded the schedule.** Four taps of "Check my recall" in one
+  sitting filed a fresh verse 45 days out. Only a review that was *actually due*
+  now advances the ladder; extra runs still count as attempts and feed the
+  streak, and the page names them as practice. This one is worth remembering —
+  my own test had encoded the compounding as intended behaviour, so I rewrote it
+  to climb each rung on the day it actually falls due.
+- **Import split scores from their schedule.** A newer session's failing scores
+  were adopted while the local "due in a month" interval was kept, so a lapse was
+  recorded but never scheduled. The practice record now moves as one unit.
+- **Unstudied verses outranked overdue ones** in the queue, because `due: null`
+  sorted ahead of every real date. Overdue reviews come first now.
+- **`reps > 0` with `interval: 0`** multiplied out to zero for ever, parking a
+  verse as permanently due. `normalizeVerse()` repairs it.
+
+Verified in Chromium in both themes and at 390px, plus the resting state and the
+extra-practice state. 80 UI checks (up from 39); mutation-tested all eight new
+behaviours by reverting each fix and confirming the intended check failed.
+
 ## 2026-08-13 — extract src/ and add a build step
 
 Split `index.html` into `src/style.css`, `src/markup.html`, and `src/app.js`,
