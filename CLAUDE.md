@@ -43,6 +43,14 @@ styling detail.
 - **One file, no external requests.** A strict CSP blocks every external host —
   no CDN fonts, scripts, or images. Inline everything. No `<!doctype>`, `<html>`,
   `<head>`, or `<body>` tags: the Artifact host supplies the skeleton.
+
+- **The Artifact sandbox is stricter than the test harness.** `test/harness.mjs`
+  loads the page over `file://` in plain Chromium, so anything the *viewer*
+  forbids still passes locally. Downloads are the live example: a `<a download>`
+  or script-driven save — `blob:` and `data:` included — is inert for viewers
+  and needs the `downloads` capability instead. Assume a browser feature works
+  in the harness and not in the Artifact until checked; a green suite is not
+  evidence the published page can do it.
 - **Scripture is graded against, so it must be exact.** Starter passages are
   King James Version, verified against the 1769 text by `test/verify-kjv.mjs`.
   Never edit a passage by hand — change it and re-run that test.

@@ -3,6 +3,22 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-14 — export is dead on the published page
+
+Found while republishing the Artifact after merging PR #2: the publish step warns
+that a page cannot hand a viewer a file through `<a download>`, and `exportDeck()`
+does exactly that with a Blob URL. So **Export has never worked on the published
+page** — it only works in the test harness, which loads over `file://` in plain
+Chromium where the sandbox rules don't apply. The colophon promises "export to
+keep a copy", and progress now carries a schedule, so there is more to lose.
+
+Logged at the top of **Now** (a live defect outranks a new feature, though Kevin
+can reorder) and added a `CLAUDE.md` invariant: a green suite is not evidence the
+published page can do something, because the harness is more permissive than the
+Artifact sandbox. The fix is the `downloads` capability, declared at publish time.
+
+Docs only — no behaviour change, so `npm test` is untouched at 83/83.
+
 ## 2026-08-14 — spaced repetition
 
 Merged PR #1 first: it was open from the previous run, green (153/153), a pure
