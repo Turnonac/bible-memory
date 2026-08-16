@@ -3,6 +3,55 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-16 — fix export on the published Artifact
+
+Fixed the item logged at the top of `ROADMAP.md`'s **Now** two nights ago:
+`exportDeck()` built a Blob and clicked an `<a download>`, which the Artifact
+viewer's sandbox blocks outright (`blob:`/`data:` hrefs included), so the
+button did nothing for anyone using the published page even though it passed
+every test — the harness loads over `file://` in plain Chromium, where the
+sandbox rules don't apply.
+
+`exportDeck()` now checks for `window.claude.use("downloads")` first. When
+granted, it hands the file to the viewer through `downloads.save({filename,
+data})` instead of touching the DOM at all; a decline is silent (the user just
+said no), any other error shows a one-line `alert` with the capability's own
+message. Where the capability isn't there — the test harness, or the page
+opened directly as a file — it falls back to the original anchor-click trick,
+so nothing regressed for that path.
+
+Per the `CLAUDE.md` note left with this item, a green suite proves nothing
+about the Artifact sandbox by itself, so the new coverage asserts the
+*mechanism*: `test/ui.mjs` now mocks `window.claude.downloads` before the page
+loads and checks that `exportDeck()` calls `save()` with the whole deck rather
+than falling back to the anchor. Mutation-tested by running that check against
+the unfixed `exportDeck()` — it hung waiting on a save that never came, i.e.
+it fails the way a real regression would. Also hand-verified in the harness
+(not just asserted) that a `declined` rejection stays silent, a real error
+(`too_large`) surfaces the alert, and the anchor fallback still produces a
+working download with no `window.claude` present at all.
+
+Self-review (`code-review` skill) caught one real bug before shipping: the
+viewer allows only one undecided save prompt at a time, so a second click on
+Export while the first `save()` call was still awaiting the viewer's
+confirmation would reject with a non-`declined` error and surface a spurious
+"couldn't save" alert for an export that was actually fine — the pre-fix
+anchor-click version had no such conflict since each click was independent.
+Added an `exporting` guard so a click while one is already in flight is a
+no-op, with a test that clicks twice in quick succession against a `save()`
+that resolves after a delay and checks it was only called once. Mutation-tested
+by dropping the guard and confirming that check fails (`2` calls, not `1`).
+Declined the review's second finding — falling back to the anchor/blob path
+if `save()` fails with a lifecycle code like `capability_disabled` after the
+capability was already granted — because if `window.claude` exists at all
+we're in the Artifact sandbox, where that fallback doesn't work either; there
+is nothing to fall back to.
+
+`npm test`: 88/88 (up from 83). No visual change, so verification was a smoke
+screenshot in both themes at 390px plus the browser checks above.
+
+Did not touch the second `Now` item (Recite aloud) — one thing finished well.
+
 ## 2026-08-14 — export is dead on the published page
 
 Found while republishing the Artifact after merging PR #2: the publish step warns

@@ -14,22 +14,6 @@ the whole product.
 
 ## Now
 
-- [ ] **Export is dead on the published Artifact.** `exportDeck()` builds a Blob
-  and clicks an `<a download>`, but the Artifact viewer never grants a page
-  download permission — `blob:` and `data:` hrefs included — so the button does
-  nothing for anyone using the published page. The colophon promises "export to
-  keep a copy", and now that progress carries a schedule there is more to lose.
-  The fix is the `downloads` capability and `window.claude.downloads.save(...)`,
-  declared at publish time.
-
-  **The test suite structurally cannot catch this.** `test/harness.mjs` loads the
-  page over `file://` in plain Chromium, where `<a download>` works fine; only
-  the real Artifact sandbox blocks it. Any check has to assert the mechanism
-  (that the code calls the downloads capability) rather than the behaviour.
-
-  *Put at the top of Now because it is a live defect on the shipped page rather
-  than a new feature — reorder if you'd rather have Recite aloud first.*
-
 - [ ] **Recite aloud.** Memorization is oral; typing is a proxy. Use the Web
   Speech API for a spoken-recall mode — prompt with the reference, listen, and
   run the same word-alignment grading over the transcript. Degrade cleanly where
@@ -87,6 +71,8 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Export uses the `downloads` capability, with a `<a download>` fallback for
+  the test harness and any plain-browser (file://) use of the page. *(2026-08-16)*
 - [x] Initial page: four drill modes, 28 verified KJV passages, localStorage
   progress, export/import, both themes. *(2026-08-11)*
 - [x] Test suite: KJV fidelity against the 1769 text plus UI behaviour, ~150

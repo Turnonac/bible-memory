@@ -721,16 +721,50 @@
     $("seal").hidden = !isMastered(v);
   }
 
-  function exportDeck() {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = el("a");
-    a.href = url;
-    a.download = "verse-by-heart-" + todayKey() + ".json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  let exporting = false;
+
+  async function exportDeck() {
+    // The viewer allows only one undecided save prompt at a time, so a second
+    // click while the first is still awaiting confirmation would surface a
+    // spurious "couldn't save" error for a export that's actually fine.
+    if (exporting) return;
+    exporting = true;
+
+    const data = JSON.stringify(state, null, 2);
+    const filename = "verse-by-heart-" + todayKey() + ".json";
+
+    try {
+      // The published Artifact sandbox blocks `<a download>` (and blob:/data:
+      // hrefs) outright, so on that host this button did nothing at all. Where
+      // the capability is granted, hand the file to the viewer through it;
+      // otherwise fall back to the anchor trick for the test harness and any
+      // plain-browser (file://) use of this page.
+      const downloads = window.claude && typeof window.claude.use === "function"
+        ? await window.claude.use("downloads")
+        : null;
+      if (downloads) {
+        try {
+          await downloads.save({ filename, data });
+        } catch (e) {
+          if (e && e.code !== "declined") {
+            alert("Couldn't save the export — " + (e && e.message ? e.message : "try again") + ".");
+          }
+        }
+        return;
+      }
+
+      const blob = new Blob([data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = el("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      exporting = false;
+    }
   }
 
   function importDeck(file) {

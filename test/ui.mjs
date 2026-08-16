@@ -217,6 +217,72 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ export capability ========================== */
+{
+  // The published Artifact sandbox blocks `<a download>` entirely, so a real
+  // download event proves nothing about whether the page works there — see
+  // CLAUDE.md. Mock `window.claude.downloads` before the page loads and assert
+  // exportDeck() calls it instead of falling back to the anchor trick; that's
+  // the mechanism the harness *can* check.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    window.__saved = null;
+    window.claude = {
+      use: async name => name === "downloads" ? {
+        save: async req => { window.__saved = req; return { status: "saved" }; }
+      } : null
+    };
+  });
+  await page.goto(url);
+
+  let sawDownloadEvent = false;
+  page.once("download", () => { sawDownloadEvent = true; });
+  await page.click("#exportBtn");
+  await page.waitForFunction(() => window.__saved !== null);
+
+  const saved = await page.evaluate(() => window.__saved);
+  check("export hands the file to the downloads capability when it's granted",
+    typeof saved.filename === "string" && /^verse-by-heart-.*\.json$/.test(saved.filename));
+  const parsed = JSON.parse(saved.data);
+  check("the capability payload is the whole deck", Array.isArray(parsed.verses) && parsed.verses.length > 0);
+  check("the anchor-download fallback is skipped once the capability exists", !sawDownloadEvent);
+  await ctx.close();
+}
+
+/* ============================ export re-entrancy ========================= */
+{
+  // The viewer allows only one undecided save prompt at a time, so clicking
+  // Export again while the first prompt is still pending must not fire a
+  // second save() call — that would surface a spurious error for an export
+  // that's actually fine.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const dialogs = [];
+  page.on("dialog", async d => { dialogs.push(d.message()); await d.dismiss(); });
+  await page.addInitScript(() => {
+    window.__saveCalls = 0;
+    window.claude = {
+      use: async name => name === "downloads" ? {
+        save: async () => {
+          window.__saveCalls++;
+          await new Promise(r => setTimeout(r, 200));
+          return { status: "saved" };
+        }
+      } : null
+    };
+  });
+  await page.goto(url);
+
+  await page.click("#exportBtn");
+  await page.click("#exportBtn");
+  await page.waitForTimeout(400);
+
+  eq("a second click while a save is pending doesn't start a second save", await page.evaluate(() => window.__saveCalls), 1);
+  check("the pending-save guard raises no error dialog", dialogs.length === 0, dialogs.join(" | "));
+  await ctx.close();
+}
+
 /* ============================ scheduling ================================ */
 {
   // Boot the page with a given payload already in storage.
