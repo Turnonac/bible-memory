@@ -217,6 +217,152 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ export capability ========================== */
+{
+  // The published Artifact sandbox blocks `<a download>` entirely, so a real
+  // download event proves nothing about whether the page works there — see
+  // CLAUDE.md. Mock `window.claude.downloads` before the page loads and assert
+  // exportDeck() calls it instead of falling back to the anchor trick; that's
+  // the mechanism the harness *can* check.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    window.__saved = null;
+    // A real "download" browser event is an async signal that could arrive
+    // after we've already checked for it; count anchor clicks synchronously
+    // instead so the assertion below can't race the fallback path.
+    window.__anchorDownloadClicks = 0;
+    const origClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (this.hasAttribute("download")) window.__anchorDownloadClicks++;
+      return origClick.call(this);
+    };
+    window.claude = {
+      use: async name => name === "downloads" ? {
+        save: async req => { window.__saved = req; return { status: "saved" }; }
+      } : null
+    };
+  });
+  await page.goto(url);
+
+  await page.click("#exportBtn");
+  await page.waitForFunction(() => window.__saved !== null);
+
+  const saved = await page.evaluate(() => window.__saved);
+  check("export hands the file to the downloads capability when it's granted",
+    typeof saved.filename === "string" && /^verse-by-heart-.*\.json$/.test(saved.filename));
+  const parsed = JSON.parse(saved.data);
+  check("the capability payload is the whole deck", Array.isArray(parsed.verses) && parsed.verses.length > 0);
+  eq("the anchor-download fallback is skipped once the capability exists",
+    await page.evaluate(() => window.__anchorDownloadClicks), 0);
+  await ctx.close();
+}
+
+/* ============================ export re-entrancy ========================= */
+{
+  // The viewer allows only one undecided save prompt at a time, so clicking
+  // Export again while the first prompt is still pending must not fire a
+  // second save() call — that would surface a spurious error for an export
+  // that's actually fine.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const dialogs = [];
+  page.on("dialog", async d => { dialogs.push(d.message()); await d.dismiss(); });
+  await page.addInitScript(() => {
+    window.__saveCalls = 0;
+    window.claude = {
+      use: async name => name === "downloads" ? {
+        save: async () => {
+          window.__saveCalls++;
+          await new Promise(r => setTimeout(r, 200));
+          return { status: "saved" };
+        }
+      } : null
+    };
+  });
+  await page.goto(url);
+
+  await page.click("#exportBtn");
+  await page.click("#exportBtn");
+  await page.waitForTimeout(400);
+
+  eq("a second click while a save is pending doesn't start a second save", await page.evaluate(() => window.__saveCalls), 1);
+  check("the pending-save guard raises no error dialog", dialogs.length === 0, dialogs.join(" | "));
+  await ctx.close();
+}
+
+/* ============================ export error handling ====================== */
+{
+  // A declined save is the user's own "no" and must stay silent. Triggering a
+  // second export afterwards is also the proof the pending-save guard released
+  // — if it hadn't, this second click would be a no-op and __saveCalls would
+  // never reach 2.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const dialogs = [];
+  page.on("dialog", async d => { dialogs.push(d.message()); await d.dismiss(); });
+  await page.addInitScript(() => {
+    window.__saveCalls = 0;
+    window.claude = {
+      use: async name => name === "downloads" ? {
+        save: async () => {
+          window.__saveCalls++;
+          const e = new Error("declined");
+          e.code = "declined";
+          throw e;
+        }
+      } : null
+    };
+  });
+  await page.goto(url);
+
+  await page.click("#exportBtn");
+  await page.waitForFunction(() => window.__saveCalls === 1);
+  await page.click("#exportBtn");
+  await page.waitForFunction(() => window.__saveCalls === 2);
+  check("a declined save raises no dialog", dialogs.length === 0, dialogs.join(" | "));
+  await ctx.close();
+}
+
+{
+  // Any other save failure surfaces one readable alert with the capability's
+  // own message, and still releases the guard for the next attempt.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const dialogs = [];
+  const firstDialog = new Promise(resolve => {
+    page.once("dialog", async d => { dialogs.push(d.message()); await d.dismiss(); resolve(); });
+  });
+  await page.addInitScript(() => {
+    window.__saveCalls = 0;
+    window.claude = {
+      use: async name => name === "downloads" ? {
+        save: async () => {
+          window.__saveCalls++;
+          const e = new Error("File too large");
+          e.code = "too_large";
+          throw e;
+        }
+      } : null
+    };
+  });
+  await page.goto(url);
+
+  await page.click("#exportBtn");
+  // Wait for the dialog to actually be delivered and dismissed — the alert()
+  // call blocks the page's JS until then, so clicking again too early would
+  // race the export guard's release in the `finally` block.
+  await firstDialog;
+  check("a real save error shows exactly one alert with its message",
+    dialogs.length === 1 && dialogs[0].includes("File too large"), dialogs.join(" | "));
+
+  await page.click("#exportBtn");
+  await page.waitForFunction(() => window.__saveCalls === 2);
+  eq("the export guard releases after an error, so a later export can run",
+    await page.evaluate(() => window.__saveCalls), 2);
+  await ctx.close();
+}
+
 /* ============================ scheduling ================================ */
 {
   // Boot the page with a given payload already in storage.
