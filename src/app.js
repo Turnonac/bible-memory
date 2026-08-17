@@ -649,6 +649,7 @@
       peeked = new Set();
       hideOrder = [];
       $("attempt").value = "";
+      $("result").hidden = true;
     }
     save();
     renderAll();
@@ -748,7 +749,8 @@
     "not-allowed": "Microphone access was blocked — allow it and try again.",
     "service-not-allowed": "Microphone access was blocked — allow it and try again.",
     "audio-capture": "No microphone found.",
-    "network": "Speech recognition needs a network connection."
+    "network": "Speech recognition needs a network connection.",
+    "no-speech": "Didn't catch anything — try again."
   };
 
   function setSpeakStatus(text, warn) {
@@ -773,7 +775,15 @@
   function endListening(grade) {
     if (!listener) return;
     if (!grade) suppressAutoGrade = true;
-    try { listener.stop(); } catch (e) { /* already stopping */ }
+    try { listener.stop(); }
+    catch (e) {
+      // stop() failed synchronously, so onend will never arrive to reset
+      // this state itself — reset it here or the control stays stuck
+      // reading "Stop listening" with no way to end the session.
+      listener = null;
+      suppressAutoGrade = false;
+      setListeningUI(false);
+    }
   }
 
   function startListening() {
@@ -802,6 +812,10 @@
     };
 
     rec.onerror = e => {
+      // A session already being discarded (switching verses, a manual Check,
+      // or the browser's own "aborted" for a stop() it treats like an abort)
+      // must not repopulate the status text a canceller already cleared.
+      if (suppressAutoGrade || e.error === "aborted") return;
       hadError = true;
       setSpeakStatus(SPEECH_ERRORS[e.error] || "Didn't catch that — try again.", true);
     };

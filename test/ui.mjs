@@ -502,7 +502,9 @@ const installFakeRecognizer = () => {
   await page.evaluate(t => window.__emitFinal(t), "some words");
 
   await page.click('.card .open:has-text("John 3:16")');
-  await page.waitForTimeout(150); // let the recognizer's async onend settle
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
 
   check("switching verses mid-listen discards the transcript instead of grading it",
     await page.isHidden("#result"));
@@ -535,10 +537,14 @@ const installFakeRecognizer = () => {
     JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Psalm 46:1").attempts);
   eq("a manual Check mid-listen grades once", await attemptsOf(), 1);
 
-  // Whatever state the button is left in, tap it again — the fixed guard has
-  // already stopped and cleared the old session, so this starts a fresh one
-  // rather than re-grading the old transcript.
+  // Tap it again — the fixed guard already stopped and cleared the old
+  // session, so this starts a fresh one rather than re-grading the old
+  // transcript. Confirming the fresh session actually starts (rather than
+  // the stale one silently finishing instead) is itself deterministic; the
+  // extra beat afterwards is a bounded margin for the *absence* of a delayed
+  // async re-grade, which has no positive UI state to poll for.
   await page.click("#speakBtn");
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Stop listening");
   await page.waitForTimeout(150);
   eq("a follow-up tap doesn't re-grade the transcript the manual Check already used",
     await attemptsOf(), 1);
@@ -562,7 +568,9 @@ const installFakeRecognizer = () => {
   const drop = page.locator(".card").filter({ hasText: "Genesis 1:1" }).locator(".drop");
   await drop.click();
   await drop.click(); // confirm
-  await page.waitForTimeout(150); // let the old recognizer's async onend settle
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
 
   const attemptsOf = ref => page.evaluate(r =>
     JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === r)?.attempts, ref);
@@ -587,6 +595,81 @@ const installFakeRecognizer = () => {
     (await page.getAttribute("#attempt", "readonly")) !== null);
   await page.click("#speakBtn");
   await page.waitForFunction(() => document.getElementById("attempt").readOnly === false);
+  await ctx.close();
+}
+
+{
+  // Removing the active verse must clear its result the same way selectVerse()
+  // does — otherwise the old percentage and marked words stay on screen for
+  // whatever verse becomes active next, looking like a grade it never earned.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  await page.click('.card .open:has-text("Genesis 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", "In the beginning God created the heaven and the earth.");
+  await page.click("#check");
+  await page.waitForFunction(() => !document.getElementById("result").hidden);
+
+  const drop = page.locator(".card").filter({ hasText: "Genesis 1:1" }).locator(".drop");
+  await drop.click();
+  await drop.click(); // confirm
+  check("removing the graded verse clears its result instead of leaving it on screen",
+    await page.isHidden("#result"));
+  await ctx.close();
+}
+
+{
+  // A cancelled session (switching verses, here) must not have its cleared
+  // status text repopulated by an error the recognizer fires afterwards —
+  // real browsers can report "aborted" for a stop() they treat like an abort.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      constructor() { this.onresult = null; this.onerror = null; this.onend = null; window.__rec = this; }
+      start() {}
+      stop() {
+        setTimeout(() => {
+          this.onerror && this.onerror({ error: "aborted" });
+          this.onend && this.onend();
+        }, 0);
+      }
+    }
+    window.SpeechRecognition = FakeRecognition;
+  });
+  await page.goto(url);
+  await page.click('.card .open:has-text("Psalm 46:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.click('.card .open:has-text("John 3:16")'); // cancels the session
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+  eq("cancelling a listening session leaves no stray error message behind",
+    await page.textContent("#speakStatus"), "");
+  await ctx.close();
+}
+
+{
+  // A stop() call that fails synchronously (real recognizers can throw
+  // InvalidStateError) must still reset the control instead of sticking on
+  // "Stop listening" forever with no way to end the session.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      constructor() { this.onresult = null; this.onerror = null; this.onend = null; window.__rec = this; }
+      start() {}
+      stop() { throw new Error("InvalidStateError"); }
+    }
+    window.SpeechRecognition = FakeRecognition;
+  });
+  await page.goto(url);
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  eq("a listening session started", await page.textContent("#speakBtn"), "Stop listening");
+  await page.click("#speakBtn"); // stop() throws synchronously here
+  eq("a synchronous stop() failure still resets the control instead of sticking",
+    await page.textContent("#speakBtn"), "Speak it");
   await ctx.close();
 }
 
