@@ -24,7 +24,9 @@
       <div class="row">
         <button class="btn primary" id="check">Check my recall</button>
         <button class="btn quiet" id="peekBtn">Show the verse</button>
-        <span class="caption" id="reciteNote" style="font-family:var(--mono);font-size:.625rem;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint)"></span>
+        <button class="btn quiet" id="speakBtn" aria-pressed="false" hidden>Speak it</button>
+        <span class="caption" id="reciteNote"></span>
+        <span class="caption" id="speakStatus" aria-live="polite"></span>
       </div>
       <div class="result" id="result" hidden aria-live="polite">
         <div class="scoreline">

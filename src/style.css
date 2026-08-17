@@ -298,6 +298,11 @@
   .btn.primary:hover { background: var(--madder-soft); border-color: var(--madder-soft); color: var(--on-accent); }
   .btn.quiet { background: none; border-color: transparent; color: var(--ink-faint); }
   .btn.quiet:hover { color: var(--madder); }
+  .btn.listening, .btn.listening:hover {
+    background: var(--madder);
+    border-color: var(--madder);
+    color: var(--on-accent);
+  }
 
   .hint {
     font-size: .75rem;
@@ -331,6 +336,14 @@
   }
   .recite textarea::placeholder { color: var(--ink-faint); }
   .recite .row { display: flex; align-items: center; gap: .75rem; margin-top: .85rem; flex-wrap: wrap; }
+  .recite .row .caption {
+    font-family: var(--mono);
+    font-size: .625rem;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .recite .row .caption.warn { color: var(--madder); }
 
   .result { margin-top: 1.5rem; }
   .scoreline {
@@ -637,5 +650,7 @@
   @media (prefers-reduced-motion: no-preference) {
     .card, .btn, .switch button, .steps .seg button, .tok { transition: background-color .14s ease, color .14s ease, border-color .14s ease; }
     .stage { animation: settle .3s ease both; }
+    .btn.listening { animation: listen-pulse 1.6s ease-in-out infinite; }
     @keyframes settle { from { opacity: 0; transform: translateY(4px); } }
+    @keyframes listen-pulse { 50% { opacity: .7; } }
   }

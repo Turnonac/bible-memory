@@ -14,11 +14,7 @@ the whole product.
 
 ## Now
 
-- [ ] **Recite aloud.** Memorization is oral; typing is a proxy. Use the Web
-  Speech API for a spoken-recall mode — prompt with the reference, listen, and
-  run the same word-alignment grading over the transcript. Degrade cleanly where
-  the API is missing (Firefox, most mobile browsers) by hiding the mode rather
-  than showing a broken button.
+_Empty — promote from Next._
 
 ## Next
 
@@ -71,6 +67,11 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Recite aloud. A "Speak it" control in Recite mode uses the Web Speech
+  API to capture a spoken attempt and grade it through the same
+  `compare()`/`runCheck()` a typed attempt runs through. Hidden outright where
+  the API doesn't exist (Firefox, most mobile) rather than showing a dead
+  button. *(2026-08-17)*
 - [x] Export uses the `downloads` capability, with a `<a download>` fallback for
   the test harness and any plain-browser (file://) use of the page. *(2026-08-16)*
 - [x] Initial page: four drill modes, 28 verified KJV passages, localStorage
