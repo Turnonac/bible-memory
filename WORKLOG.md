@@ -3,6 +3,69 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-17 — merge the export fix, then recite aloud
+
+Started by merging PR #4 from the previous run (the `downloads`-capability export
+fix): both CodeRabbit review threads were resolved, `npm test` was green
+(91/91) on that branch, and the working agreement makes finishing an open PR
+outrank starting new work. Republished the Artifact afterward with
+`capabilities: {downloads: true}` declared — the fix needs the capability
+actually granted at publish time to do anything on the live page, which the
+previous run's PR body already called out. Missed this on the first attempt:
+the Artifact tool blocks `capabilities` until the `artifact-capabilities`
+skill has been loaded first, and separately requires viewing the artifact's
+current version before a redeploy (`WebFetch` the URL) if this session hasn't
+already published it.
+
+Then took the newly-promoted top of **Now**: recite aloud. Added a "Speak it"
+control to Recite mode using the Web Speech API — `webkitSpeechRecognition` /
+`SpeechRecognition`, feature-detected so the button is absent outright on
+Firefox and most mobile browsers rather than present and broken. Listening
+runs continuously; stopping (by the user's own tap, or a spoken pass ending
+with silence) hands the transcript to the exact same `runCheck()` /
+`compare()` a typed attempt runs through, so grading, scheduling, and the
+red-marked-word review are unchanged for a spoken pass.
+
+**The harness's Chromium actually ships a working `SpeechRecognition`
+constructor**, unlike a real sandbox with no microphone or speech service
+behind it — checked this directly before writing any test. So per the
+`CLAUDE.md` note about harness permissiveness, the new coverage mocks the
+API's event lifecycle (a fake `SpeechRecognition` class installed via
+`addInitScript` before load) and asserts the mechanism: that a transcript
+reaches `runCheck()`, that silence or a denied microphone explain themselves
+instead of grading a blank, and that the button is hidden when the addInitScript
+removes the constructor to stand in for a browser that never had one.
+
+Self-review (`code-review` skill) caught two real bugs before shipping, both
+fixed and both regression-tested:
+
+- **Removing the verse being recited didn't stop the listener.** Unlike
+  `selectVerse()`/`setMode()`, which the same diff updated to stop listening on
+  the way out, `removeVerse()` left a stale session running; its transcript
+  would later grade against whatever verse became active next. Confirmed with
+  the project's own harness before fixing — this wrote a real (fabricated)
+  attempt onto an unrelated verse's SM-2 record, a direct hit against
+  `CLAUDE.md`'s "only a due review moves the schedule" invariant.
+- **A manual edit to the recall box during listening could be silently
+  overwritten** by the next recognition event, since `onresult` replaces the
+  whole field unconditionally. Fixed by making the box read-only for the
+  duration of a listening session — simpler than merging two live input
+  sources, and it matches how dictation fields behave elsewhere.
+
+Also caught two bugs myself while writing the first pass of tests, before
+the review: a naive "double-grade" regression test that couldn't actually
+observe its own mutation (the fake recognizer's `onend` only fires from
+`.stop()`, so a removed guard just left the session hanging rather than
+double-grading) — rewrote it to simulate the follow-up tap that would
+trigger the stale `onend` for real, then confirmed it failed against the
+unfixed code before restoring the fix.
+
+`npm test`: 111/111 (up from 91). Verified in the harness in both themes and
+at 390px; the "FIRST ATTEMPT" / "LISTENING…" captions read as one run-on
+phrase sharing a row, so status text now leads with "· " when set.
+
+Did not start anything else from **Next** — one item finished well.
+
 ## 2026-08-16 — fix export on the published Artifact
 
 Fixed the item logged at the top of `ROADMAP.md`'s **Now** two nights ago:

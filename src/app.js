@@ -463,7 +463,7 @@
       read: "Read it through two or three times before you veil it.",
       veil: peeks ? peeks + (peeks === 1 ? " word restored" : " words restored") + " — those are the ones to work on." : "Click any blank to bring the word back in red.",
       initials: peeks ? peeks + (peeks === 1 ? " word restored." : " words restored.") : "Only the first letter stays. Click a word to see the rest.",
-      recite: ""
+      recite: SpeechRecognition ? "Type it, or tap Speak it and say it aloud." : ""
     };
     $("hint").innerHTML = notes[mode] +
       (mode === "recite" ? "" : " <span style=\"color:var(--ink-faint)\">&middot; <kbd>1</kbd>&ndash;<kbd>4</kbd> switch modes, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> change verse</span>");
@@ -624,6 +624,8 @@
    * Actions
    * ------------------------------------------------------------------ */
   function selectVerse(id) {
+    endListening(false);
+    setSpeakStatus("", false);
     state.activeId = id;
     peeked = new Set();
     hideOrder = [];
@@ -637,8 +639,18 @@
   function removeVerse(id) {
     if (state.verses.length === 1) return;
     const wasActive = active().id === id;
+    // Removing the verse currently being recited must not leave a listener
+    // running: its transcript would otherwise land on whatever verse becomes
+    // active next, grading a recitation that was never made against it.
+    if (wasActive) { endListening(false); setSpeakStatus("", false); }
     state.verses = state.verses.filter(v => v.id !== id);
-    if (wasActive) { state.activeId = state.verses[0].id; peeked = new Set(); hideOrder = []; }
+    if (wasActive) {
+      state.activeId = state.verses[0].id;
+      peeked = new Set();
+      hideOrder = [];
+      $("attempt").value = "";
+      $("result").hidden = true;
+    }
     save();
     renderAll();
   }
@@ -650,6 +662,7 @@
   }
 
   function setMode(next) {
+    if (mode === "recite" && next !== "recite") { endListening(false); setSpeakStatus("", false); }
     mode = next;
     if (next === "recite") { $("result").hidden = true; }
     renderStage();
@@ -657,6 +670,7 @@
   }
 
   function runCheck() {
+    if (listener) endListening(false); // grading now; the async onend shouldn't grade again
     const v = active();
     const typed = $("attempt").value.trim();
     if (!typed) { $("attempt").focus(); return; }
@@ -719,6 +733,109 @@
     renderStreak();
     renderTally();
     $("seal").hidden = !isMastered(v);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Recite aloud — same word-alignment grading, spoken instead of typed.
+   * Missing outright on browsers with no Web Speech API (Firefox, most
+   * mobile), so the button only appears where it can actually work rather
+   * than showing one that does nothing.
+   * ------------------------------------------------------------------ */
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let listener = null;
+  let suppressAutoGrade = false;
+
+  const SPEECH_ERRORS = {
+    "not-allowed": "Microphone access was blocked — allow it and try again.",
+    "service-not-allowed": "Microphone access was blocked — allow it and try again.",
+    "audio-capture": "No microphone found.",
+    "network": "Speech recognition needs a network connection.",
+    "no-speech": "Didn't catch anything — try again."
+  };
+
+  function setSpeakStatus(text, warn) {
+    const s = $("speakStatus");
+    s.textContent = text ? "· " + text : "";
+    s.classList.toggle("warn", !!warn);
+  }
+
+  function setListeningUI(active) {
+    const b = $("speakBtn");
+    b.textContent = active ? "Stop listening" : "Speak it";
+    b.setAttribute("aria-pressed", String(active));
+    b.classList.toggle("listening", active);
+    // Every recognition event overwrites the whole field with the transcript
+    // so far; read-only while listening stops that from silently clobbering
+    // a manual edit the user typed mid-session.
+    $("attempt").readOnly = active;
+  }
+
+  // grade=false discards whatever was heard (switching verse or mode mid-listen);
+  // grade=true is the normal "I'm done" path and lets onend hand off to runCheck.
+  function endListening(grade) {
+    if (!listener) return;
+    if (!grade) suppressAutoGrade = true;
+    try { listener.stop(); }
+    catch (e) {
+      // stop() failed synchronously, so onend will never arrive to reset
+      // this state itself — reset it here or the control stays stuck
+      // reading "Stop listening" with no way to end the session.
+      listener = null;
+      suppressAutoGrade = false;
+      setListeningUI(false);
+    }
+  }
+
+  function startListening() {
+    if (!SpeechRecognition || listener) return;
+    const rec = new SpeechRecognition();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.maxAlternatives = 1;
+    let finalTranscript = "";
+    let hadError = false;
+
+    $("attempt").value = "";
+    listener = rec;
+    setListeningUI(true);
+    setSpeakStatus("Listening…", false);
+
+    rec.onresult = e => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalTranscript += t + " ";
+        else interim += t;
+      }
+      $("attempt").value = (finalTranscript + interim).trim();
+    };
+
+    rec.onerror = e => {
+      // A session already being discarded (switching verses, a manual Check,
+      // or the browser's own "aborted" for a stop() it treats like an abort)
+      // must not repopulate the status text a canceller already cleared.
+      if (suppressAutoGrade || e.error === "aborted") return;
+      hadError = true;
+      setSpeakStatus(SPEECH_ERRORS[e.error] || "Didn't catch that — try again.", true);
+    };
+
+    rec.onend = () => {
+      listener = null;
+      setListeningUI(false);
+      const auto = !suppressAutoGrade;
+      suppressAutoGrade = false;
+      if (!auto) return;
+      if (finalTranscript.trim()) { setSpeakStatus("", false); runCheck(); }
+      else if (!hadError) setSpeakStatus("Didn't catch anything — try again.", true);
+    };
+
+    try { rec.start(); }
+    catch (e) {
+      listener = null;
+      setListeningUI(false);
+      setSpeakStatus("Couldn't start listening — try again.", true);
+    }
   }
 
   let exporting = false;
@@ -850,6 +967,11 @@
 
   $("check").addEventListener("click", runCheck);
   $("peekBtn").addEventListener("click", () => setMode("read"));
+
+  $("speakBtn").hidden = !SpeechRecognition;
+  $("speakBtn").addEventListener("click", () => {
+    if (listener) endListening(true); else startListening();
+  });
 
   $("attempt").addEventListener("keydown", e => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runCheck(); }

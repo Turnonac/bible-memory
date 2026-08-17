@@ -363,6 +363,316 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ recite aloud ================================ */
+{
+  // This harness's Chromium happens to expose the constructor (even in a
+  // sandbox with no working mic or speech service behind it), so the button
+  // should appear here — the "no API" case right after checks it stays
+  // hidden where the constructor is genuinely absent, e.g. Firefox.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  await page.click('button[data-mode="recite"]');
+  check("Speak it is offered where the Web Speech API exists", await page.isVisible("#speakBtn"));
+  await ctx.close();
+}
+
+{
+  // Browsers without the API (Firefox, most mobile) must not show a button
+  // that does nothing when pressed.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    window.SpeechRecognition = undefined;
+    window.webkitSpeechRecognition = undefined;
+  });
+  await page.goto(url);
+  await page.click('button[data-mode="recite"]');
+  check("Speak it stays hidden without the Web Speech API", !(await page.isVisible("#speakBtn")));
+  await ctx.close();
+}
+
+// A fake SpeechRecognition standing in for the browser's — real speech
+// capture needs a microphone and a speech service this sandbox has neither
+// of, so these assert the mechanism: that a transcript reaches the same
+// runCheck()/compare() a typed attempt runs through, per the CLAUDE.md note
+// that a harness pass proves nothing about a capability it can't exercise.
+const installFakeRecognizer = () => {
+  window.__recStartCount = 0;
+  window.__emitFinal = text => {
+    window.__rec.onresult({
+      resultIndex: 0,
+      results: [Object.assign([{ transcript: text }], { isFinal: true })]
+    });
+  };
+  class FakeRecognition {
+    constructor() {
+      this.onresult = null; this.onerror = null; this.onend = null;
+      window.__rec = this;
+      window.__recStartCount++;
+    }
+    start() {}
+    stop() { setTimeout(() => this.onend && this.onend(), 0); }
+  }
+  window.SpeechRecognition = FakeRecognition;
+};
+
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Psalm 46:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+
+  eq("Speak it starts the recognizer", await page.evaluate(() => window.__recStartCount), 1);
+  eq("the control flips to a stop affordance while listening",
+    await page.textContent("#speakBtn"), "Stop listening");
+
+  await page.evaluate(t => window.__emitFinal(t), "God is our refuge and strength a very present help in trouble");
+  await page.click("#speakBtn"); // the user's "I'm done" — the same button now stops and submits
+
+  await page.waitForFunction(() => !document.getElementById("result").hidden);
+  check("stopping a spoken attempt grades it, showing a percentage",
+    /%$/.test(await page.textContent("#pct")));
+  eq("the control reverts once grading has run", await page.textContent("#speakBtn"), "Speak it");
+  await ctx.close();
+}
+
+{
+  // Nothing heard: don't grade a blank, and say why instead of going quiet.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.click("#speakBtn"); // stop without ever emitting a result
+
+  await page.waitForFunction(() => document.getElementById("speakStatus").textContent.length > 0);
+  check("an empty listen doesn't grade the verse", await page.isHidden("#result"));
+  check("an empty listen explains what happened",
+    (await page.textContent("#speakStatus")).toLowerCase().includes("catch"));
+  await ctx.close();
+}
+
+{
+  // A denied microphone is a real, expected outcome, not a crash.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", e => errors.push(String(e)));
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      constructor() { this.onresult = null; this.onerror = null; this.onend = null; window.__rec = this; }
+      start() {
+        setTimeout(() => {
+          this.onerror && this.onerror({ error: "not-allowed" });
+          this.onend && this.onend();
+        }, 0);
+      }
+      stop() {}
+    }
+    window.SpeechRecognition = FakeRecognition;
+  });
+  await page.goto(url);
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+
+  await page.waitForFunction(() => document.getElementById("speakStatus").textContent.length > 0);
+  check("a denied microphone names the problem",
+    (await page.textContent("#speakStatus")).toLowerCase().includes("microphone"));
+  eq("the control resets after an error", await page.textContent("#speakBtn"), "Speak it");
+  check("a denied microphone raises no page error", errors.length === 0, errors.join(" | "));
+  await ctx.close();
+}
+
+{
+  // Leaving mid-listen (switching verses) must discard the transcript rather
+  // than grade it once the recognizer's async onend eventually fires — the
+  // same "only a deliberate stop grades" rule the queue relies on for typing.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Psalm 46:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "some words");
+
+  await page.click('.card .open:has-text("John 3:16")');
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+
+  check("switching verses mid-listen discards the transcript instead of grading it",
+    await page.isHidden("#result"));
+  eq("the recall box is cleared for the newly selected verse", await page.inputValue("#attempt"), "");
+  eq("the control reverts to idle once the old session ends", await page.textContent("#speakBtn"), "Speak it");
+  await ctx.close();
+}
+
+{
+  // Pressing "Check my recall" mid-listen grades immediately; the recognizer's
+  // own async onend must not grade the same attempt a second time once it
+  // eventually fires — the same double-submit risk export's re-entrancy guard
+  // protects against, here on the state that drives the schedule. Without the
+  // guard, clicking Check mid-listen leaves the old recognizer running with
+  // its transcript still held; the very next tap of the (still-labelled
+  // "Stop listening") button would then stop that stale session and its
+  // onend would grade the same transcript a second time.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Psalm 46:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "God is our refuge and strength a very present help in trouble");
+  await page.click("#check"); // grade mid-listen, before the recognizer has ended on its own
+  await page.waitForFunction(() => !document.getElementById("result").hidden);
+
+  const attemptsOf = async () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Psalm 46:1").attempts);
+  eq("a manual Check mid-listen grades once", await attemptsOf(), 1);
+
+  // Tap it again — the fixed guard already stopped and cleared the old
+  // session, so this starts a fresh one rather than re-grading the old
+  // transcript. Confirming the fresh session actually starts (rather than
+  // the stale one silently finishing instead) is itself deterministic; the
+  // extra beat afterwards is a bounded margin for the *absence* of a delayed
+  // async re-grade, which has no positive UI state to poll for.
+  await page.click("#speakBtn");
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Stop listening");
+  await page.waitForTimeout(150);
+  eq("a follow-up tap doesn't re-grade the transcript the manual Check already used",
+    await attemptsOf(), 1);
+  await ctx.close();
+}
+
+{
+  // Removing the verse being recited must stop the listener the same way
+  // switching verses does — otherwise a transcript spoken for the removed
+  // verse lands on whichever verse becomes active next, corrupting its SM-2
+  // record for a recitation the user never made against it.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Genesis 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "some words spoken for the verse being removed");
+
+  const drop = page.locator(".card").filter({ hasText: "Genesis 1:1" }).locator(".drop");
+  await drop.click();
+  await drop.click(); // confirm
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+
+  const attemptsOf = ref => page.evaluate(r =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === r)?.attempts, ref);
+  eq("removing the recited verse mid-listen leaves the next active verse ungraded",
+    await attemptsOf("Joshua 1:9"), 0);
+  eq("the control reverts once the removed verse's session ends", await page.textContent("#speakBtn"), "Speak it");
+  await ctx.close();
+}
+
+{
+  // Every recognition event overwrites the recall box with the transcript so
+  // far; read-only while listening stops that from silently discarding a
+  // manual edit typed into the same field mid-session.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('button[data-mode="recite"]');
+  check("the recall box accepts typing before listening starts", !(await page.getAttribute("#attempt", "readonly")));
+  await page.click("#speakBtn");
+  check("the recall box is read-only while a listening session is live",
+    (await page.getAttribute("#attempt", "readonly")) !== null);
+  await page.click("#speakBtn");
+  await page.waitForFunction(() => document.getElementById("attempt").readOnly === false);
+  await ctx.close();
+}
+
+{
+  // Removing the active verse must clear its result the same way selectVerse()
+  // does — otherwise the old percentage and marked words stay on screen for
+  // whatever verse becomes active next, looking like a grade it never earned.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  await page.click('.card .open:has-text("Genesis 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", "In the beginning God created the heaven and the earth.");
+  await page.click("#check");
+  await page.waitForFunction(() => !document.getElementById("result").hidden);
+
+  const drop = page.locator(".card").filter({ hasText: "Genesis 1:1" }).locator(".drop");
+  await drop.click();
+  await drop.click(); // confirm
+  check("removing the graded verse clears its result instead of leaving it on screen",
+    await page.isHidden("#result"));
+  await ctx.close();
+}
+
+{
+  // A cancelled session (switching verses, here) must not have its cleared
+  // status text repopulated by an error the recognizer fires afterwards —
+  // real browsers can report "aborted" for a stop() they treat like an abort.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      constructor() { this.onresult = null; this.onerror = null; this.onend = null; window.__rec = this; }
+      start() {}
+      stop() {
+        setTimeout(() => {
+          this.onerror && this.onerror({ error: "aborted" });
+          this.onend && this.onend();
+        }, 0);
+      }
+    }
+    window.SpeechRecognition = FakeRecognition;
+  });
+  await page.goto(url);
+  await page.click('.card .open:has-text("Psalm 46:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.click('.card .open:has-text("John 3:16")'); // cancels the session
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+  eq("cancelling a listening session leaves no stray error message behind",
+    await page.textContent("#speakStatus"), "");
+  await ctx.close();
+}
+
+{
+  // A stop() call that fails synchronously (real recognizers can throw
+  // InvalidStateError) must still reset the control instead of sticking on
+  // "Stop listening" forever with no way to end the session.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      constructor() { this.onresult = null; this.onerror = null; this.onend = null; window.__rec = this; }
+      start() {}
+      stop() { throw new Error("InvalidStateError"); }
+    }
+    window.SpeechRecognition = FakeRecognition;
+  });
+  await page.goto(url);
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  eq("a listening session started", await page.textContent("#speakBtn"), "Stop listening");
+  await page.click("#speakBtn"); // stop() throws synchronously here
+  eq("a synchronous stop() failure still resets the control instead of sticking",
+    await page.textContent("#speakBtn"), "Speak it");
+  await ctx.close();
+}
+
 /* ============================ scheduling ================================ */
 {
   // Boot the page with a given payload already in storage.
