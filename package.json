@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "gen:kjv": "node scripts/gen-kjv-data.mjs",
     "test": "node test/build.mjs && node test/verify-kjv.mjs && node test/ui.mjs",
     "test:kjv": "node test/verify-kjv.mjs",
     "test:ui": "node test/ui.mjs",

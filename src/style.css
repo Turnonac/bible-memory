@@ -633,6 +633,9 @@
     font-size: .9375rem;
   }
   .form textarea { font-family: var(--serif); min-height: 5.5rem; resize: vertical; line-height: 1.6; }
+  .form .reflookup { display: flex; gap: .5rem; align-items: stretch; }
+  .form .reflookup input { flex: 1; min-width: 0; }
+  .form .reflookup .btn { flex: none; white-space: nowrap; }
   .form .err { color: var(--madder); font-size: .75rem; min-height: 1.1em; margin: 0; }
   .form .actions { display: flex; gap: .5rem; align-items: center; }
 

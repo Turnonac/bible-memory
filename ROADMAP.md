@@ -18,11 +18,6 @@ _Empty — promote from Next._
 
 ## Next
 
-- [ ] **Add any verse by reference.** Today you paste text by hand. Bundle a
-  compressed KJV index so someone can type "Romans 5" and get the passage. The
-  full 1769 text is ~5.5 MB raw, well inside the 16 MB artifact budget once
-  compressed — measure before committing to the approach.
-
 - [ ] **Deck sharing by URL.** Encode a deck into the fragment so a small group
   can work the same passages. No backend needed; a good rehearsal for sync.
 
@@ -67,6 +62,17 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Add any verse by reference. `npm run gen:kjv` packs the whole 1769 KJV
+  (66 books, 31,102 verses) into a gzip'd, base64'd `src/kjv-data.js` — 1.4 MB
+  compressed, well inside the 16 MB artifact budget. "Add a verse of your own"
+  gained a "Look up" button (and Enter-to-look-up) that resolves "Romans 8:28",
+  "Romans 8:28-30", or a bare "Romans 8" for the whole chapter, decompressing
+  client-side via `DecompressionStream` — absent outright where that API
+  doesn't exist, same pattern as Speak It. Handles the KJV's own quirks: the
+  data's "Psalms" displays as the app's usual singular "Psalm", "Song of
+  Solomon" resolves via alias to the data's "Solomon's Song", and the five
+  one-chapter books (Jude, Obadiah, Philemon, 2/3 John) read a bare number as
+  a verse the way they're actually cited ("Jude 3"), not a chapter. *(2026-08-18)*
 - [x] Recite aloud. A "Speak it" control in Recite mode uses the Web Speech
   API to capture a spoken attempt and grade it through the same
   `compare()`/`runCheck()` a typed attempt runs through. Hidden outright where

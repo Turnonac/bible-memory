@@ -18,6 +18,13 @@ before commit shows up as a test failure, not a silent drift. Always run
 `npm run build` and commit the regenerated `index.html` alongside any `src/`
 change — the Artifact publishes `index.html` itself, not `src/`.
 
+`src/kjv-data.js` is a fourth source file, but it's itself generated —
+gzip'd, base64'd 1769 KJV text plus the 66-book canon list, built from the
+`kjv` npm package by `npm run gen:kjv` (`scripts/gen-kjv-data.mjs`). Don't
+hand-edit it; regenerate it if the `kjv` package ever changes. `npm run
+build` reads it like any other file under `src/`, so it still needs
+committing alongside `index.html`.
+
 ## The idea the design rests on
 
 The verse keeps its exact layout in every mode while the ink drains out of it.

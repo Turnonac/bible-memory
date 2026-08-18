@@ -93,7 +93,10 @@
       <form class="form" id="addForm">
         <div>
           <label for="newRef">Reference</label>
-          <input id="newRef" placeholder="Psalm 27:1" autocomplete="off">
+          <div class="reflookup">
+            <input id="newRef" placeholder="Romans 8:28, or just Romans 8" autocomplete="off">
+            <button class="btn" type="button" id="lookupBtn" hidden>Look up</button>
+          </div>
         </div>
         <div>
           <label for="newText">Verse text</label>

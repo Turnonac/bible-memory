@@ -217,6 +217,136 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ verse lookup ("Add any verse by reference") */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", e => errors.push(String(e)));
+  await page.goto(url);
+  await page.click("details.add > summary");
+
+  check("Look up is offered where DecompressionStream exists", await page.isVisible("#lookupBtn"));
+
+  const lookUp = async ref => {
+    await page.fill("#newRef", ref);
+    await page.click("#lookupBtn");
+    await page.waitForFunction(() => document.getElementById("lookupBtn").textContent === "Look up");
+    return { err: await page.textContent("#addErr"), text: await page.inputValue("#newText"), ref: await page.inputValue("#newRef") };
+  };
+
+  // Same wording the starter deck already carries this verse with — proof the
+  // bundled data round-trips through gzip/base64 without corruption.
+  const john316 = await lookUp("john 3:16");
+  eq("a single verse looks up the exact KJV wording",
+    john316.text,
+    "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.");
+  eq("the reference is normalised to its canonical case", john316.ref, "John 3:16");
+
+  const range = await lookUp("Romans 8:28-30");
+  eq("a verse range joins consecutive verses with spaces", range.text,
+    "And we know that all things work together for good to them that love God, to them who are the called according to his purpose. " +
+    "For whom he did foreknow, he also did predestinate to be conformed to the image of his Son, that he might be the firstborn among many brethren. " +
+    "Moreover whom he did predestinate, them he also called: and whom he called, them he also justified: and whom he justified, them he also glorified.");
+
+  const chapter = await lookUp("Psalm 117");
+  eq("a bare 'Book chapter' pulls the whole chapter", chapter.text,
+    "O praise the LORD, all ye nations: praise him, all ye people. " +
+    "For his merciful kindness is great toward us: and the truth of the LORD endureth for ever. Praise ye the LORD.");
+
+  const alias = await lookUp("song of solomon 2:1");
+  eq("a book alias resolves to its canonical KJV name", alias.ref, "Solomon's Song 2:1");
+
+  // The kjv package's data files this book as "Psalms" (plural), but every
+  // other reference in the app — the starter deck included — displays the
+  // singular "Psalm". A looked-up reference must match that, not leak the
+  // data's internal plural spelling into the deck.
+  const psalm = await lookUp("psalm 23:1");
+  eq("a Psalms lookup displays as singular 'Psalm', matching the rest of the app", psalm.ref, "Psalm 23:1");
+
+  // Jude, Obadiah, Philemon, 2 John, and 3 John have only one chapter, so their
+  // usual citation form is "Book verse" (e.g. "Jude 3"), not "Book chapter".
+  // A number straight after one of these book names must be read as a verse.
+  const oneChapter = await lookUp("Jude 3");
+  eq("a bare number after a one-chapter book is read as a verse, not a chapter",
+    oneChapter.text, "Beloved, when I gave all diligence to write unto you of the common salvation, it was needful for me to write unto you, and exhort you that ye should earnestly contend for the faith which was once delivered unto the saints.");
+  eq("the normalised reference still names the (implicit) chapter", oneChapter.ref, "Jude 1:3");
+
+  const badBook = await lookUp("Xylophon 1:1");
+  check("an unknown book names itself in the error", badBook.err.includes("Xylophon"));
+
+  const badChapter = await lookUp("Romans 999:1");
+  check("a chapter past the book's end says so, not 'no verse'", badChapter.err.includes("chapter 999"));
+
+  const badVerse = await lookUp("Romans 8:999");
+  check("a verse past the chapter's end names the chapter", badVerse.err.includes("Romans 8") && badVerse.err.includes("999"));
+
+  const garbage = await lookUp("not a reference");
+  check("unparseable input gets a readable error, not a crash", garbage.err.length > 10);
+
+  await page.fill("#newRef", "");
+  await page.click("#lookupBtn");
+  check("looking up with no reference asks for one", (await page.textContent("#addErr")).length > 5);
+
+  // Enter in the Reference field should look up, not submit the half-filled form.
+  await page.fill("#newRef", "James 1:5");
+  await page.press("#newRef", "Enter");
+  await page.waitForFunction(() => document.getElementById("lookupBtn").textContent === "Look up");
+  check("Enter in the reference field triggers a lookup",
+    (await page.inputValue("#newText")).startsWith("If any of you lack wisdom"));
+
+  const cardsBefore = await page.$$eval(".card", n => n.length);
+  await page.click("#addForm button[type=submit]");
+  eq("a looked-up verse adds to the deck like any other", await page.$$eval(".card", n => n.length), cardsBefore + 1);
+
+  check("verse lookup raised no page errors", errors.length === 0, errors.join(" | "));
+  await ctx.close();
+}
+
+/* ==================== verse lookup absent without the API ================ */
+{
+  // Same feature-detection pattern as Speak It: DecompressionStream doesn't
+  // exist everywhere, so the control must be absent outright rather than
+  // present and broken — see CLAUDE.md.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => { delete window.DecompressionStream; });
+  await page.goto(url);
+  await page.click("details.add > summary");
+
+  check("Look up stays hidden without DecompressionStream", !(await page.isVisible("#lookupBtn")));
+
+  await page.fill("#newRef", "John 3:16");
+  await page.press("#newRef", "Enter");
+  check("Enter falls through to the ordinary add-a-verse flow when lookup is unavailable",
+    (await page.textContent("#addErr")).toLowerCase().includes("paste"));
+  await ctx.close();
+}
+
+/* ==================== verse lookup: decompression failure ================ */
+{
+  // If DecompressionStream exists but the pipeline throws — a corrupted
+  // payload, a browser quirk — the failure must reach the user as a message
+  // in #addErr, not vanish as a silently-swallowed rejection.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    class ThrowingDecompressionStream {
+      constructor() { throw new Error("simulated decompression failure"); }
+    }
+    window.DecompressionStream = ThrowingDecompressionStream;
+  });
+  await page.goto(url);
+  await page.click("details.add > summary");
+
+  await page.fill("#newRef", "John 3:16");
+  await page.click("#lookupBtn");
+  await page.waitForFunction(() => document.getElementById("lookupBtn").textContent === "Look up");
+  check("a decompression failure surfaces a message instead of failing silently",
+    (await page.textContent("#addErr")).length > 5);
+  await ctx.close();
+}
+
 /* ============================ export capability ========================== */
 {
   // The published Artifact sandbox blocks `<a download>` entirely, so a real
