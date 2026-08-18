@@ -65,6 +65,12 @@ can type 'Romans 5'"); abbreviations would need a disambiguation table
 several books share prefixes on (1/2/3 John, Philippians/Philemon) and felt
 like scope creep for one night.
 
+Opened PR #6, subscribed to its activity, and republished the Artifact at the
+fixed URL (`WebFetch`'d it first to confirm this session hadn't already
+published it) — the stored `downloads` capability declaration carried
+forward untouched, per the tool's own note that omitting `capabilities` on a
+redeploy keeps what's already there.
+
 ## 2026-08-17 — merge the export fix, then recite aloud
 
 Started by merging PR #4 from the previous run (the `downloads`-capability export
