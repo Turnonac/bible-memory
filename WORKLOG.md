@@ -3,6 +3,74 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-18 — add any verse by reference
+
+No open PRs from previous runs (last night's Recite Aloud PR was already
+merged), so took the newly-promoted top of **Next**: bundling the KJV so
+"Add a verse of your own" doesn't require pasting text by hand.
+
+`scripts/gen-kjv-data.mjs` (run via `npm run gen:kjv`) reads the `kjv` npm
+package's 1769 text — the same source `test/verify-kjv.mjs` already grades
+the starter deck against — strips its two editorial markup conventions
+(`[bracketed]` translator words, `#` paragraph marks), and writes
+`src/kjv-data.js`: the 66-book canon list plus all 31,102 verses, gzip'd and
+base64'd. Raw JSON is ~4.8 MB; gzipped it's ~1.3 MB, ~1.7 MB once base64'd
+into the page — comfortably inside the 16 MB artifact budget, so the
+"measure before committing" note in `ROADMAP.md` cleared quickly. `build.mjs`
+now reads `src/kjv-data.js` as a fourth input alongside the other three —
+documented in `CLAUDE.md` as generated-but-committed, same status as
+`index.html` itself.
+
+The Reference field in the add-verse form gained a "Look up" button (Enter in
+the field does the same thing) that decompresses the bundle client-side with
+`DecompressionStream` and fills the Verse text field. Accepts "Romans 8:28",
+"Romans 8:28-30", or a bare "Romans 8" for the whole chapter. Per the
+`CLAUDE.md` note that the harness's Chromium is more permissive than the
+Artifact sandbox, checked first whether `DecompressionStream` is a real
+compute API (not a network fetch) that CSP has no reason to block — it is —
+so unlike Export/Speak-It this one needed no `window.claude` capability.
+Still followed the same feature-detection pattern as Speak It regardless:
+missing outright, not present and broken, where the API doesn't exist.
+
+Self-review (`code-review` skill) caught three real bugs, all fixed, all
+mutation-tested by reverting each and confirming the new check fails:
+
+- **Psalm lookups displayed as "Psalms 23:1"**, the data's internal plural,
+  when every other reference in the app — including the starter deck —
+  displays the singular "Psalm". `test/verify-kjv.mjs` already documented
+  this exact split; the new lookup path just hadn't been told about it.
+  Added a `BOOK_DISPLAY` un-pluralizing map, used only for the label shown
+  to the user, so the data stays keyed under "Psalms" internally.
+- **The five one-chapter books (Jude, Obadiah, Philemon, 2 John, 3 John)
+  parsed "Jude 3" as chapter 3**, which doesn't exist, when the number in
+  their conventional citation is a verse. Detected by checking whether the
+  book has a second chapter in the decompressed data (`!index[book + " 2:1"]`)
+  and reinterpreting the bare number as a verse of chapter 1 when it doesn't.
+- **A thrown/rejected decompression had no `catch`**, so a corrupted payload
+  or browser quirk would silently reset the "Look up" button with no message
+  at all rather than the readable error every other failure path in the
+  function produces. Added the missing `catch`, with a test that installs a
+  `DecompressionStream` whose constructor throws.
+
+`npm test`: 249/249 (1 build + 113 KJV + 135 UI, UI up from 115). Verified in
+the harness in both themes at 390px — the Reference field and its new button
+share a row without crowding at that width — and manually exercised the
+range/whole-chapter/alias/error paths beyond what the automated checks cover,
+including all five one-chapter books by hand.
+
+Scoped out for now, worth a note if it comes up again: abbreviations ("Rom
+8:28") and multi-word fuzzy book matching aren't supported — full book names
+only, case-insensitive. Full names cover the ask in `ROADMAP.md` ("someone
+can type 'Romans 5'"); abbreviations would need a disambiguation table
+several books share prefixes on (1/2/3 John, Philippians/Philemon) and felt
+like scope creep for one night.
+
+Opened PR #6, subscribed to its activity, and republished the Artifact at the
+fixed URL (`WebFetch`'d it first to confirm this session hadn't already
+published it) — the stored `downloads` capability declaration carried
+forward untouched, per the tool's own note that omitting `capabilities` on a
+redeploy keeps what's already there.
+
 ## 2026-08-17 — merge the export fix, then recite aloud
 
 Started by merging PR #4 from the previous run (the `downloads`-capability export

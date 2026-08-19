@@ -5,6 +5,10 @@
 // what test/harness.mjs loads), but src/ is what you edit. Run `npm run
 // build` after touching src/ and commit the regenerated index.html —
 // test/build.mjs fails the moment the two drift apart.
+//
+// src/kjv-data.js is itself generated (by `npm run gen:kjv`, from the `kjv`
+// npm package) rather than hand-edited, but it's a normal build input here —
+// this just reads it like the other three files.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,8 +20,9 @@ export function buildPage() {
   const title = "<title>Verse by Heart</title>\n";
   const css = fs.readFileSync(path.join(SRC, "style.css"), "utf8");
   const markup = fs.readFileSync(path.join(SRC, "markup.html"), "utf8");
+  const kjvData = fs.readFileSync(path.join(SRC, "kjv-data.js"), "utf8");
   const js = fs.readFileSync(path.join(SRC, "app.js"), "utf8");
-  return title + "<style>\n" + css + "</style>\n\n" + markup + "<script>\n" + js + "</script>\n";
+  return title + "<style>\n" + css + "</style>\n\n" + markup + "<script>\n" + kjvData + js + "</script>\n";
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
