@@ -378,6 +378,85 @@ let sharedHash;
   await ctx.close();
 }
 
+{
+  // A verse whose ref or text is longer than decodeShareDeck will accept
+  // must be shortened on the SENDING side too — truncating only on read
+  // would let a recipient's copy silently diverge from what the sender
+  // thinks they shared.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  const longText = "Word ".repeat(2000).trim(); // well past SHARE_TEXT_MAX (8000)
+  const oversized = {
+    schema: 2,
+    verses: [{
+      id: "vlong", ref: "Long Book 1:1", text: longText, source: "custom",
+      attempts: 0, best: 0, last: null, recent: [], ease: 2.5, reps: 0, interval: 0, due: null
+    }],
+    activeId: null, history: {}
+  };
+  await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), oversized);
+  await page.reload();
+
+  await page.click("#shareBtn");
+  const link = await page.inputValue("#shareLink");
+  const shared = JSON.parse(Buffer.from(link.split("#deck=")[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+  check("an oversized verse is shortened in the link itself, not just on read",
+    shared[0][1].length <= 8000, String(shared[0][1].length));
+  check("shortening a verse to fit is explained, not silent",
+    (await page.textContent("#shareCopyStatus")).length > 5);
+
+  // What the link carries is exactly what a recipient will receive — the
+  // sender's own truncation and the reader's are the same cut, not two
+  // different ones that could disagree. (decodeShareDeck also trims after
+  // slicing, so the expected length mirrors that, not the raw slice length —
+  // a truncation cut that lands on whitespace trims one extra character.)
+  const hash = "#" + link.split("#")[1];
+  const ctx2 = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page2 = await ctx2.newPage();
+  await page2.goto(url + hash);
+  await page2.click("#shareImportAdd");
+  const receivedText = await page2.evaluate(() =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Long Book 1:1").text.length);
+  eq("the recipient's copy matches the length already shortened in the link", receivedText, shared[0][1].trim().length);
+  await ctx2.close();
+  await ctx.close();
+}
+
+{
+  // A hand-edited or truncated link can carry a malformed entry (null, a
+  // bare string, wrong arity) alongside otherwise-good ones. One bad entry
+  // must not void every valid verse in the same link. Built with plain
+  // Node base64 (no browser round trip needed) so the only navigation is
+  // the one straight to the deck link — goto(plain url) then goto(url+hash)
+  // would be a same-document hash change in a real browser, not a reload,
+  // and wouldn't actually exercise "open this link".
+  const compact = [
+    ["Good Verse 1:1", "This one is fine."],
+    null,
+    "just a string",
+    ["Good Verse 2:1", "This one is fine too."],
+    ["only one element"],
+    ["", "empty ref is dropped like normal"]
+  ];
+  const b64 = Buffer.from(JSON.stringify(compact), "utf8").toString("base64")
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url + "#deck=" + b64);
+
+  check("a link with some malformed entries still offers the valid ones",
+    await page.isVisible("#shareImportAdd"));
+  const sub = await page.textContent("#shareImportSub");
+  check("only the well-formed entries are counted", sub.includes("2 new verse"), sub);
+  await page.click("#shareImportAdd");
+  check("both well-formed verses were added despite the malformed entries",
+    (await page.locator(".card").filter({ hasText: "Good Verse 1:1" }).count()) === 1 &&
+    (await page.locator(".card").filter({ hasText: "Good Verse 2:1" }).count()) === 1);
+  await ctx.close();
+}
+
 /* ============================ verse lookup ("Add any verse by reference") */
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });

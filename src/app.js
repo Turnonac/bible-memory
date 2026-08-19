@@ -846,20 +846,26 @@
    * ------------------------------------------------------------------ */
   const SHARE_PREFIX = "#deck=";
   const SHARE_MAX_VERSES = 200;
+  const SHARE_REF_MAX = 200;
+  const SHARE_TEXT_MAX = 8000;
   const PUBLISHED_URL = "https://claude.ai/code/artifact/a8cc5bc3-f1af-46ba-98af-3bf2ed398794";
 
-  // Capped the same as decodeShareDeck accepts, so a link this page builds is
-  // always one this page (or anyone else's) can read back — a sender with a
-  // larger deck gets a link for the first SHARE_MAX_VERSES rather than one
-  // that silently fails on the far end as "broken".
+  // Capped exactly like decodeShareDeck reads them back — count, ref length,
+  // and text length alike — so a link this page builds always decodes to
+  // what it looks like it shares. Truncating only on the read side would let
+  // an oversized verse arrive at the recipient reading different words than
+  // the sender's own deck holds, with nothing to explain the difference.
   function encodeShareDeck(verses) {
-    const compact = verses.slice(0, SHARE_MAX_VERSES).map(v => [v.ref, v.text]);
+    const compact = verses.slice(0, SHARE_MAX_VERSES)
+      .map(v => [String(v.ref).trim().slice(0, SHARE_REF_MAX), String(v.text).trim().slice(0, SHARE_TEXT_MAX)]);
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
     return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
   // Bounded and length-capped: a link is untrusted input, however it was
-  // handed to whoever opens it.
+  // handed to whoever opens it. One malformed entry (not a [ref, text] pair —
+  // a hand-edited or truncated link) is dropped rather than voiding every
+  // other verse in an otherwise-good link.
   function decodeShareDeck(b64) {
     const padded = b64.replace(/-/g, "+").replace(/_/g, "/");
     const pad = padded.length % 4 ? "=".repeat(4 - padded.length % 4) : "";
@@ -867,7 +873,8 @@
     const compact = JSON.parse(json);
     if (!Array.isArray(compact) || compact.length > SHARE_MAX_VERSES) throw new Error("not a deck");
     return compact
-      .map(pair => ({ ref: String(pair[0] || "").trim().slice(0, 200), text: String(pair[1] || "").trim().slice(0, 8000) }))
+      .filter(pair => Array.isArray(pair) && pair.length === 2)
+      .map(pair => ({ ref: String(pair[0] || "").trim().slice(0, SHARE_REF_MAX), text: String(pair[1] || "").trim().slice(0, SHARE_TEXT_MAX) }))
       .filter(v => v.ref && v.text);
   }
 
@@ -1181,9 +1188,13 @@
     panel.hidden = !opening;
     if (!opening) return;
     $("shareLink").value = shareBaseUrl() + SHARE_PREFIX + encodeShareDeck(state.verses);
-    $("shareCopyStatus").textContent = state.verses.length > SHARE_MAX_VERSES
+    const overCount = state.verses.length > SHARE_MAX_VERSES;
+    const overLength = state.verses.some(v => v.ref.length > SHARE_REF_MAX || v.text.length > SHARE_TEXT_MAX);
+    $("shareCopyStatus").textContent = overCount
       ? "Only the first " + SHARE_MAX_VERSES + " verses fit in one link."
-      : "";
+      : overLength
+        ? "A verse was too long to share in full and was shortened."
+        : "";
     $("shareLink").focus();
     $("shareLink").select();
   });

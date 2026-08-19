@@ -63,13 +63,33 @@ hash-consumption all work correctly on a plain top-level page), and left
 the one platform-specific unknown clearly documented rather than either
 skipping the feature or claiming certainty I don't have.
 
-`npm test`: 160/160 — 1 build + 113 KJV fidelity + 160 UI, UI up from 135
-(25 new checks). Verified in the harness
-in both themes and at 390px — the deck-head tools wrap to two rows on
-mobile without crowding, the share panel's link/copy/hint stack cleanly,
-and the import banner's actions drop below its text at narrow widths,
-matching the review queue's existing madder-rail idiom for "something is
-waiting on you."
+`npm test`: 1/1 build fidelity + 113/113 KJV fidelity + 160/160 UI (up from
+135, 25 new checks) — 274 checks total. Verified in the harness in both
+themes and at 390px — the deck-head tools wrap to two rows on mobile
+without crowding, the share panel's link/copy/hint stack cleanly, and the
+import banner's actions drop below its text at narrow widths, matching the
+review queue's existing madder-rail idiom for "something is waiting on
+you."
+
+Review round on PR #7 (CodeRabbit) caught two more real issues, both fixed
+and both mutation-tested:
+
+- **`encodeShareDeck` didn't cap ref/text length, only `decodeShareDeck`
+  did.** A custom verse over either limit would build a link that decoded
+  to different, shorter content than the sender's own deck — a silent
+  mismatch, not a rejection. Both sides now cap identically
+  (`SHARE_REF_MAX`/`SHARE_TEXT_MAX`), and the Share panel says so when a
+  verse was shortened to fit.
+- **A single malformed entry in a hand-edited link voided the whole
+  import.** `decodeShareDeck` read `pair[0]`/`pair[1]` without checking
+  `pair` was a two-element array first, so one `null` or bare-string entry
+  threw and the caller's `try/catch` turned an otherwise-good link into
+  "Broken share link" for every verse in it. Malformed entries are now
+  filtered out before mapping, so the well-formed verses in the same link
+  still import.
+
+`npm test` after the review round: 1/1 + 113/113 + 166/166 UI (6 more
+checks) — 280 total.
 
 ## 2026-08-18 — add any verse by reference
 
