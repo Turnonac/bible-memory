@@ -3,6 +3,74 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-19 — merge the verse-lookup PR, then deck sharing by URL
+
+Merged PR #6 first (previous run's "Add any verse by reference"): green
+(249/249), no open review threads, CodeRabbit finished — the working
+agreement makes finishing an open PR outrank starting new work. Republished
+the Artifact afterward with the merged `index.html` and the `downloads`
+capability re-declared (declarations don't carry forward implicitly across
+a fresh `capabilities` argument).
+
+Then took the newly-promoted top of **Next**: deck sharing by URL. A "Share
+deck" button on the deck-head tools row base64's the whole deck's ref/text
+pairs — no progress, no schedule, matching how CLAUDE.md treats progress as
+personal — into the page's own `location.hash`, and shows the resulting
+link in a readonly field for the user to copy. Opening that link anywhere
+shows a banner: "N new verses (M you already have)" with "Add to my deck" /
+"Dismiss", matching against the recipient's own refs (case-insensitive) so
+already-owned verses aren't duplicated. Either action clears the hash via
+`history.replaceState` so a reload doesn't re-prompt.
+
+Deliberately no `window.claude` capability dependency anywhere in this
+feature — `location.hash`, `btoa`/`atob`, and `history.replaceState` are all
+plain browser APIs with no permission gate, unlike Export (needed
+`downloads`) or Speak It (needs the Web Speech API to exist at all). Copy
+Link tries `navigator.clipboard.writeText` first but doesn't depend on it:
+on rejection (no grant, or the API absent) it falls back to selecting the
+link's text so the user can Ctrl/Cmd+C manually — verified this fallback
+path directly by deleting `navigator.clipboard` before load, rather than
+trusting whatever permission state this harness's Chromium happens to start
+with, since the sandboxed case is the one that actually matters.
+
+Self-review (`code-review` skill) caught two real issues before shipping,
+both fixed and both mutation-tested (reverted, confirmed the check fails,
+restored):
+
+- **The share link itself wasn't capped, only the decoder was.** A user with
+  a deck bigger than the 200-verse cap would build a link the *decoder*
+  rejects as "Broken share link" on the far end — the truth (too big) and
+  the message (corrupted) didn't match. `encodeShareDeck` now caps at the
+  same `SHARE_MAX_VERSES` the decoder accepts, and the Share panel says so
+  ("Only the first 200 verses fit in one link") rather than staying silent.
+- **The "which address is this share link" check guessed a hostname.**
+  `location.hostname.endsWith("claude.ai")` was an unverified assumption
+  about the sandboxed iframe's actual origin — CLAUDE.md explicitly warns
+  against trusting the harness (a plain top-level page) as evidence for the
+  Artifact (an embedded one). Replaced it with `window !== window.top`,
+  which is exactly the structural fact this decision needs (embedded vs.
+  not) and is directly inferable from the Artifact's own frame-runtime
+  script observed via `WebFetch` this session — not a guess.
+
+**One real risk this sandbox cannot verify, flagged in `ROADMAP.md`'s Done
+entry and worth Kevin trying on the live page:** whether the published
+Artifact's outer URL actually forwards a `#deck=...` fragment into the
+sandboxed iframe this page runs inside. Deployment is out of the sandbox's
+network policy, so this mirrors the Export saga exactly — built the best
+inference available, tested the mechanism thoroughly where it's testable
+(the harness proves the encode/decode round-trip, the banner, dedup, and
+hash-consumption all work correctly on a plain top-level page), and left
+the one platform-specific unknown clearly documented rather than either
+skipping the feature or claiming certainty I don't have.
+
+`npm test`: 160/160 — 1 build + 113 KJV fidelity + 160 UI, UI up from 135
+(25 new checks). Verified in the harness
+in both themes and at 390px — the deck-head tools wrap to two rows on
+mobile without crowding, the share panel's link/copy/hint stack cleanly,
+and the import banner's actions drop below its text at narrow widths,
+matching the review queue's existing madder-rail idiom for "something is
+waiting on you."
+
 ## 2026-08-18 — add any verse by reference
 
 No open PRs from previous runs (last night's Recite Aloud PR was already

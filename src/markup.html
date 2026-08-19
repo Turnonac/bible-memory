@@ -5,6 +5,17 @@
     <div class="tally" id="tally"></div>
   </header>
 
+  <div class="share-import" id="shareImport" hidden>
+    <div class="share-import-text">
+      <span class="share-import-label" id="shareImportLabel"></span>
+      <span class="share-import-sub" id="shareImportSub"></span>
+    </div>
+    <div class="share-import-actions">
+      <button class="btn primary" id="shareImportAdd">Add to my deck</button>
+      <button class="btn quiet" id="shareImportDismiss">Dismiss</button>
+    </div>
+  </div>
+
   <main class="stage" id="stage">
     <div class="reference">
       <h2 id="ref"></h2>
@@ -65,10 +76,19 @@
     <div class="deck-head">
       <h2>Your deck</h2>
       <div class="tools">
+        <button class="btn" id="shareBtn">Share deck</button>
         <button class="btn" id="exportBtn">Export</button>
         <button class="btn" id="importBtn">Import</button>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
       </div>
+    </div>
+
+    <div class="share" id="sharePanel" hidden>
+      <label class="sr-only" for="shareLink">Shareable deck link</label>
+      <input id="shareLink" type="text" readonly>
+      <button class="btn quiet" id="shareCopy">Copy link</button>
+      <span class="caption" id="shareCopyStatus" aria-live="polite"></span>
+      <p class="hint">Anyone who opens this link can add these verses to their own deck. Your practice history and schedule stay on this device.</p>
     </div>
 
     <div class="queue" id="queue">

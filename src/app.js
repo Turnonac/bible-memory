@@ -834,6 +834,110 @@
   }
 
   /* ------------------------------------------------------------------ *
+   * Deck sharing by URL — the ref/text pairs of the whole deck (no
+   * progress, no schedule) live base64'd in the page's own location.hash,
+   * so a link can be pasted straight into a browser with no backend. The
+   * published Artifact's own address (CLAUDE.md) is the one durable,
+   * paste-able link for that host — this frame's own `location` is an
+   * internal address a second person could never open directly — so that's
+   * what a share link is built from there; anywhere else (this test
+   * harness, a self-hosted copy) the page's own location already is that
+   * address.
+   * ------------------------------------------------------------------ */
+  const SHARE_PREFIX = "#deck=";
+  const SHARE_MAX_VERSES = 200;
+  const PUBLISHED_URL = "https://claude.ai/code/artifact/a8cc5bc3-f1af-46ba-98af-3bf2ed398794";
+
+  // Capped the same as decodeShareDeck accepts, so a link this page builds is
+  // always one this page (or anyone else's) can read back — a sender with a
+  // larger deck gets a link for the first SHARE_MAX_VERSES rather than one
+  // that silently fails on the far end as "broken".
+  function encodeShareDeck(verses) {
+    const compact = verses.slice(0, SHARE_MAX_VERSES).map(v => [v.ref, v.text]);
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
+    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  // Bounded and length-capped: a link is untrusted input, however it was
+  // handed to whoever opens it.
+  function decodeShareDeck(b64) {
+    const padded = b64.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = padded.length % 4 ? "=".repeat(4 - padded.length % 4) : "";
+    const json = decodeURIComponent(escape(atob(padded + pad)));
+    const compact = JSON.parse(json);
+    if (!Array.isArray(compact) || compact.length > SHARE_MAX_VERSES) throw new Error("not a deck");
+    return compact
+      .map(pair => ({ ref: String(pair[0] || "").trim().slice(0, 200), text: String(pair[1] || "").trim().slice(0, 8000) }))
+      .filter(v => v.ref && v.text);
+  }
+
+  function shareBaseUrl() {
+    // Embedded means the sandboxed Artifact frame, whose own `location` is an
+    // internal address nobody else can open directly — the durable,
+    // paste-able link there is the one recorded in CLAUDE.md. Top-level
+    // (this test harness, a self-hosted copy) means the page's own location
+    // already is that address.
+    return window !== window.top
+      ? PUBLISHED_URL
+      : location.origin + location.pathname + location.search;
+  }
+
+  // null: no shared deck in the address. { ok:false }: a hash was there but
+  // couldn't be read. { ok:true, verses }: a deck worth offering to add.
+  function readSharedDeck() {
+    if (!location.hash.startsWith(SHARE_PREFIX)) return null;
+    try {
+      const verses = decodeShareDeck(location.hash.slice(SHARE_PREFIX.length));
+      return verses.length ? { ok: true, verses } : { ok: false };
+    } catch (e) {
+      return { ok: false };
+    }
+  }
+
+  function clearShareHash() {
+    try { history.replaceState(null, "", location.pathname + location.search); }
+    catch (e) { /* history API unavailable in this context */ }
+  }
+
+  function describeShared(verses) {
+    const existing = new Set(state.verses.map(v => v.ref.toLowerCase()));
+    const fresh = verses.filter(v => !existing.has(v.ref.toLowerCase())).length;
+    if (fresh === 0) {
+      return "Already in your deck — nothing new to add.";
+    }
+    const news = fresh + (fresh === 1 ? " new verse" : " new verses");
+    return verses.length > fresh
+      ? news + " (" + (verses.length - fresh) + " you already have)."
+      : news + ".";
+  }
+
+  function addSharedDeck(verses) {
+    const existing = new Set(state.verses.map(v => v.ref.toLowerCase()));
+    let added = 0;
+    verses.forEach(sv => {
+      if (existing.has(sv.ref.toLowerCase())) return;
+      state.verses.push(blankVerse(sv.ref, sv.text, "custom"));
+      existing.add(sv.ref.toLowerCase());
+      added++;
+    });
+    if (added) save();
+    return added;
+  }
+
+  function renderShareImport(shared) {
+    const box = $("shareImport");
+    if (!shared) { box.hidden = true; return; }
+    box.hidden = false;
+    $("shareImportLabel").textContent = shared.ok
+      ? (shared.verses.length === 1 ? "Shared verse" : "Shared verses")
+      : "Broken share link";
+    $("shareImportSub").textContent = shared.ok
+      ? describeShared(shared.verses)
+      : "That link's deck couldn't be read.";
+    $("shareImportAdd").hidden = !shared.ok;
+  }
+
+  /* ------------------------------------------------------------------ *
    * Recite aloud — same word-alignment grading, spoken instead of typed.
    * Missing outright on browsers with no Web Speech API (Firefox, most
    * mobile), so the button only appears where it can actually work rather
@@ -1051,6 +1155,50 @@
     if (!due.length) return;
     selectVerse(due[0].id);
     setMode("recite");
+  });
+
+  let pendingShared = readSharedDeck();
+  renderShareImport(pendingShared);
+
+  $("shareImportAdd").addEventListener("click", () => {
+    if (!pendingShared || !pendingShared.ok) return;
+    addSharedDeck(pendingShared.verses);
+    clearShareHash();
+    pendingShared = null;
+    $("shareImport").hidden = true;
+    renderAll();
+  });
+
+  $("shareImportDismiss").addEventListener("click", () => {
+    clearShareHash();
+    pendingShared = null;
+    $("shareImport").hidden = true;
+  });
+
+  $("shareBtn").addEventListener("click", () => {
+    const panel = $("sharePanel");
+    const opening = panel.hidden;
+    panel.hidden = !opening;
+    if (!opening) return;
+    $("shareLink").value = shareBaseUrl() + SHARE_PREFIX + encodeShareDeck(state.verses);
+    $("shareCopyStatus").textContent = state.verses.length > SHARE_MAX_VERSES
+      ? "Only the first " + SHARE_MAX_VERSES + " verses fit in one link."
+      : "";
+    $("shareLink").focus();
+    $("shareLink").select();
+  });
+
+  $("shareCopy").addEventListener("click", async () => {
+    const link = $("shareLink").value;
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error("no clipboard API");
+      await navigator.clipboard.writeText(link);
+      $("shareCopyStatus").textContent = "Copied.";
+    } catch (e) {
+      $("shareLink").focus();
+      $("shareLink").select();
+      $("shareCopyStatus").textContent = "Selected — press Ctrl/Cmd+C to copy.";
+    }
   });
 
   document.querySelectorAll("#switch button").forEach(b => {

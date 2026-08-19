@@ -217,6 +217,167 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ deck sharing by URL ======================== */
+let sharedHash;
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+
+  // A verse only this "sender" has, so the recipient below has something new
+  // to receive rather than every shared ref already matching their own deck.
+  await page.click("details.add > summary");
+  await page.fill("#newRef", "Psalm 27:1");
+  await page.fill("#newText", "The LORD is my light and my salvation; whom shall I fear?");
+  await page.click("#addForm button[type=submit]");
+
+  check("the share panel starts hidden", !(await page.isVisible("#shareLink")));
+  await page.click("#shareBtn");
+  check("Share deck reveals a link", await page.isVisible("#shareLink"));
+  const link = await page.inputValue("#shareLink");
+  check("the link carries the deck fragment", link.includes("#deck="));
+  sharedHash = "#" + link.split("#")[1];
+
+  // Clicking Share again closes the panel rather than re-opening a second one.
+  await page.click("#shareBtn");
+  check("Share deck toggles the panel closed", !(await page.isVisible("#shareLink")));
+
+  await ctx.close();
+}
+
+{
+  // A sandboxed page with no clipboard-write grant is the case that actually
+  // matters on the published Artifact, so force it rather than trust whatever
+  // permission state this harness's Chromium happens to start with.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => { Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }); });
+  await page.goto(url);
+  await page.click("#shareBtn");
+  await page.click("#shareCopy");
+  const selected = await page.evaluate(() => {
+    const el = document.getElementById("shareLink");
+    return document.activeElement === el && el.selectionStart === 0 && el.selectionEnd === el.value.length;
+  });
+  check("Copy link without a Clipboard API falls back to selecting the text", selected);
+  check("the fallback explains itself", (await page.textContent("#shareCopyStatus")).length > 5);
+  await ctx.close();
+}
+
+{
+  // A second, independent browser context stands in for a friend who never
+  // touched the sender's deck — their storage starts at the default 28.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", e => errors.push(String(e)));
+  await page.goto(url + sharedHash);
+  const cards = () => page.$$eval(".card", n => n.length);
+  const start = await cards();
+
+  check("opening a shared-deck link shows the import banner", await page.isVisible("#shareImport"));
+  const sub = await page.textContent("#shareImportSub");
+  check("the banner names the one verse the recipient doesn't already have",
+    sub.includes("1 new verse") && sub.includes("already have"), sub);
+
+  await page.click("#shareImportAdd");
+  eq("adding a shared deck grows the recipient's deck by only the new verse", await cards(), start + 1);
+  check("the imported verse is on the deck", (await page.locator(".card").filter({ hasText: "Psalm 27:1" }).count()) === 1);
+  check("the import banner clears after adding", !(await page.isVisible("#shareImport")));
+
+  await page.reload();
+  check("the deck link's hash is consumed, not left to re-prompt on reload", !(await page.isVisible("#shareImport")));
+  eq("the added verse survives the reload", await cards(), start + 1);
+
+  check("deck sharing raised no page errors", errors.length === 0, errors.join(" | "));
+  await ctx.close();
+}
+
+{
+  // The same link opened twice must not duplicate the verse a second time —
+  // the recipient's own ref, not the sender's, decides what's already theirs.
+  // Two fresh pages in one context (rather than re-goto()ing the same page):
+  // navigating to a URL that differs only by fragment is a same-document
+  // hash change in a real browser, not a reload, so the script wouldn't
+  // re-run and this wouldn't actually exercise a second "open the link".
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page1 = await ctx.newPage();
+  await page1.goto(url + sharedHash);
+  await page1.click("#shareImportAdd");
+  const once = await page1.$$eval(".card", n => n.length);
+  await page1.close();
+
+  const page2 = await ctx.newPage();
+  await page2.goto(url + sharedHash);
+  await page2.click("#shareImportAdd");
+  eq("re-adding an already-received shared deck is a no-op", await page2.$$eval(".card", n => n.length), once);
+  await page2.close();
+  await ctx.close();
+}
+
+{
+  // Dismissing must not add anything, and must still consume the hash.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url + sharedHash);
+  const cards = () => page.$$eval(".card", n => n.length);
+  const start = await cards();
+
+  await page.click("#shareImportDismiss");
+  eq("dismissing a shared deck adds nothing", await cards(), start);
+  check("dismissing hides the banner", !(await page.isVisible("#shareImport")));
+  await page.reload();
+  check("dismissing also consumes the hash", !(await page.isVisible("#shareImport")));
+  await ctx.close();
+}
+
+{
+  // A corrupted or hand-edited fragment must explain itself, not crash or
+  // silently add garbage to the deck.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", e => errors.push(String(e)));
+  await page.goto(url + "#deck=not-valid-base64-at-all!!!");
+  const cards = () => page.$$eval(".card", n => n.length);
+  const start = await cards();
+
+  check("a broken share link is reported, not silently dropped", await page.isVisible("#shareImport"));
+  check("Add to my deck is withheld for a broken link", !(await page.isVisible("#shareImportAdd")));
+  await page.click("#shareImportDismiss");
+  eq("a broken share link adds nothing to the deck", await cards(), start);
+  check("a broken share link raised no page errors", errors.length === 0, errors.join(" | "));
+  await ctx.close();
+}
+
+{
+  // A deck past SHARE_MAX_VERSES must produce a link decodeShareDeck will
+  // still accept — capping only on the read side would silently hand out
+  // links that report themselves as "broken" on the far end.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  const big = {
+    schema: 2,
+    verses: Array.from({ length: 205 }, (_, i) => ({
+      id: "vbig" + i, ref: "Big Book " + i + ":1", text: "Verse number " + i + ".",
+      source: "custom", attempts: 0, best: 0, last: null, recent: [],
+      ease: 2.5, reps: 0, interval: 0, due: null
+    })),
+    activeId: null, history: {}
+  };
+  await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), big);
+  await page.reload();
+  eq("the oversized deck loaded in full", await page.$$eval(".card", n => n.length), 205);
+
+  await page.click("#shareBtn");
+  const link = await page.inputValue("#shareLink");
+  const shared = JSON.parse(Buffer.from(link.split("#deck=")[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+  check("the share link itself is capped at SHARE_MAX_VERSES", shared.length === 200, String(shared.length));
+  check("going over the cap is explained, not silent", (await page.textContent("#shareCopyStatus")).includes("200"));
+  await ctx.close();
+}
+
 /* ============================ verse lookup ("Add any verse by reference") */
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
