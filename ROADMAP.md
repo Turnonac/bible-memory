@@ -18,9 +18,6 @@ _Empty — promote from Next._
 
 ## Next
 
-- [ ] **Deck sharing by URL.** Encode a deck into the fragment so a small group
-  can work the same passages. No backend needed; a good rehearsal for sync.
-
 - [ ] **Printable drill sheets.** A print stylesheet emitting veiled and
   first-letter worksheets. Memorization happens away from screens.
 
@@ -62,6 +59,26 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Deck sharing by URL. A "Share deck" button base64's the deck's
+  ref/text pairs (no progress, no schedule) into the page's own
+  `location.hash` and shows the resulting link for the user to copy —
+  no backend, no capability grant. Opening that link shows a banner
+  offering to add whatever's new (by reference, case-insensitive; verses
+  the recipient already has are skipped), or to dismiss it; either way the
+  hash is consumed so a reload doesn't re-prompt. Capped at 200 verses on
+  both the encode and decode side, so a link this page builds is always one
+  it (or anyone else's) can read back rather than failing as "broken" past
+  the limit. **Not verifiable from this sandbox:** whether the published
+  Artifact's outer address (`https://claude.ai/code/artifact/...`) actually
+  forwards its `#deck=...` fragment into the sandboxed iframe this page runs
+  in — deployment is out of the sandbox's network policy, and the test
+  harness only proves the mechanism itself (encode/decode, the banner,
+  dedup, the hash-consumption) on a plain top-level page. If the fragment
+  doesn't reach the frame on the live page, Share deck's copied link will
+  work for anyone pasting it as a fresh top-level URL, but the in-app
+  "Add to my deck" banner won't fire — the same class of gap Export hit
+  before the `downloads` capability existed, and worth checking the same
+  way: try a real link on the published Artifact. *(2026-08-19)*
 - [x] Add any verse by reference. `npm run gen:kjv` packs the whole 1769 KJV
   (66 books, 31,102 verses) into a gzip'd, base64'd `src/kjv-data.js` — 1.4 MB
   compressed, well inside the 16 MB artifact budget. "Add a verse of your own"
