@@ -718,6 +718,70 @@
     @keyframes settle { from { opacity: 0; transform: translateY(4px); } }
     @keyframes listen-pulse { 50% { opacity: .7; } }
   }
+
+  /* ---------- print: veiled & first-letter worksheets ----------
+     A worksheet always prints on plain white paper, whatever theme the
+     screen is in, so colours below are literal rather than themed tokens —
+     the dark palette's --rule-faint is near-black and would print as a
+     solid bar under every line of blanks. */
+  @media print {
+    @page { margin: 1.4cm; }
+
+    body { background: #fff; color: #000; }
+
+    /* printBtn only shows in Veil/Initials, but native Ctrl/Cmd+P isn't
+       gated by that — .recite must go too, or a print triggered from Recite
+       mode leaves its dark-styled textarea unneutralized against the
+       forced-white page. */
+    .masthead, .share-import, .modes, .hint, .deck, .recite { display: none !important; }
+
+    .wrap { max-width: none; padding: 0; margin: 0; }
+
+    .stage {
+      background: none;
+      border: 0;
+      box-shadow: none;
+      margin: 0;
+      padding: 0;
+    }
+    .stage::before {
+      content: "Verse by Heart \00b7 practice worksheet";
+      display: block;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #8c918b;
+      margin-bottom: .75rem;
+    }
+
+    .reference h2 { color: #000; }
+    .seal { display: none !important; }
+
+    /* Ruled lines stay, so a printed sheet still reads as the same page —
+       hardcoded rather than --rule-faint, and forced past the browser's
+       default "skip backgrounds" print setting, since the rule is the point
+       here rather than decoration. */
+    .verse {
+      max-width: none;
+      color: #000;
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(var(--lh) - 1px),
+        #d9dbd2 calc(var(--lh) - 1px),
+        #d9dbd2 var(--lh)
+      );
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    /* The blank keeps its screen width so the passage doesn't reflow, but
+       trades the on-screen tint (browsers drop backgrounds by default when
+       printing) for a fill-in rule under where the word would sit. */
+    .tok.blank, .tok.initial { background: none; }
+    .tok .veiled { border-bottom: 1px solid #000; }
+  }
 </style>
 
 <div class="wrap">
@@ -790,6 +854,7 @@
         <div class="seg" id="veilSeg" role="group" aria-label="Portion of words hidden"></div>
         <button class="btn quiet" id="reshuffle">New blanks</button>
       </div>
+      <button class="btn quiet spacer" id="printBtn" hidden>Print worksheet</button>
     </div>
     <p class="hint" id="hint"></p>
   </main>
@@ -1321,15 +1386,17 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
 
     $("veilControls").hidden = mode !== "veil";
     $("recite").hidden = mode !== "recite";
+    $("printBtn").hidden = mode !== "veil" && mode !== "initials";
     if (mode !== "recite") { $("result").hidden = true; }
 
     renderVerse();
 
     const peeks = peeked.size;
+    const printHint = " Print a blank worksheet with the button above, or press ⌘/Ctrl+P.";
     const notes = {
       read: "Read it through two or three times before you veil it.",
-      veil: peeks ? peeks + (peeks === 1 ? " word restored" : " words restored") + " — those are the ones to work on." : "Click any blank to bring the word back in red.",
-      initials: peeks ? peeks + (peeks === 1 ? " word restored." : " words restored.") : "Only the first letter stays. Click a word to see the rest.",
+      veil: (peeks ? peeks + (peeks === 1 ? " word restored" : " words restored") + " — those are the ones to work on." : "Click any blank to bring the word back in red.") + printHint,
+      initials: (peeks ? peeks + (peeks === 1 ? " word restored." : " words restored.") : "Only the first letter stays. Click a word to see the rest.") + printHint,
       recite: SpeechRecognition ? "Type it, or tap Speak it and say it aloud." : ""
     };
     $("hint").innerHTML = notes[mode] +
@@ -2088,6 +2155,11 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     peeked = new Set();
     renderStage();
   });
+
+  // window.print() is a no-op, not an error, in a sandboxed iframe without
+  // allow-modals — nothing to catch. The hint text next to the button names
+  // the keyboard fallback so a silent no-op still leaves a way to print.
+  $("printBtn").addEventListener("click", () => window.print());
 
   $("check").addEventListener("click", runCheck);
   $("peekBtn").addEventListener("click", () => setMode("read"));

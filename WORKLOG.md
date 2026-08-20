@@ -3,6 +3,84 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-20 — printable drill sheets
+
+No open PRs from previous runs and `main` was already green (280/280), so
+took the newly-promoted top of **Next**: a print stylesheet for veiled and
+first-letter worksheets.
+
+A "Print worksheet" button appears in the mode row, but only in Veil and
+Initials — the two modes that actually hide words; Read and Recite hide it.
+Clicking it calls `window.print()`. A new `@media print` block in
+`src/style.css` strips everything but the reference and the verse:
+masthead, mode switch, hint, deck, and the recite panel all go to
+`display: none !important`. The core design idea — hidden words keep their
+screen width so the passage never reflows — carries over to paper; what
+changes is *how* a blank reads. On screen `.tok.blank` gets a light
+background tint, but browsers drop background colours by default when
+printing, so the print rules swap that for a `border-bottom` under the
+`.veiled` span instead — a fill-in line under wherever a word (or, in
+Initials, everything after the first letter) would sit. The ruled
+manuscript-paper lines under the verse text survive onto the printed sheet
+too, forced past that same "skip backgrounds" default with
+`print-color-adjust: exact`, so a worksheet still reads as the same page
+rather than reverting to a generic look. Colours in the print block are
+hardcoded (`#000`, `#d9dbd2`) rather than pulled from the theme tokens —
+worksheets always print on white paper regardless of what theme the screen
+was in, and the dark palette's `--rule-faint` is near-black, which would
+print as a solid bar under every line.
+
+Self-review (`code-review` skill) caught two real bugs before shipping,
+both fixed and both mutation-tested:
+
+- **The hint text pointed the wrong way.** It read "the button below," but
+  `#printBtn` sits in the `.modes` row, which comes *before* the `<p
+  class="hint">` in the DOM — the button is above the text that names it,
+  for every user in Veil or Initials mode. Changed "below" to "above."
+- **Printing from Recite mode left a dark, unreadable textarea on the
+  page.** `printBtn` is hidden in Recite mode, but the app's own keydown
+  handler explicitly lets `Ctrl/Cmd+Enter` through for "check my recall"
+  and doesn't intercept `Ctrl/Cmd+P` at all — so a native browser print
+  while reciting isn't gated by the button being hidden. The print
+  hide-list didn't include `.recite`, so its dark-theme-styled textarea
+  would print as a near-black box (or invisible light text on white, if
+  the browser also skips background graphics). Added `.recite` to the
+  hide-list. The regression test for this one needed a second pass: my
+  first attempt tried to click the Recite mode button while `page` was
+  still under `emulateMedia({media:'print'})` from the previous check, but
+  `.modes` is itself print-hidden, so the click timed out rather than
+  exercising the bug — the harness was failing for the wrong reason, not
+  passing for the right one. Fixed by switching back to `screen` media to
+  click, then re-emulating `print` to assert.
+
+**One real risk this sandbox cannot verify, matching the pattern flagged
+with Share deck last night:** whether `window.print()` fires at all inside
+the published Artifact's sandboxed iframe. Per the HTML spec, `print()` is
+treated as a modal-dialog trigger and needs `allow-modals` on a sandboxed
+frame — and a blocked call is a silent no-op, not an exception, so there's
+nothing a `try/catch` could surface. That's exactly why the hint text next
+to the button spells out the Ctrl/Cmd+P keyboard fallback rather than
+relying on the button alone: the `@media print` rules themselves apply to
+*any* print trigger, so even if the button does nothing on the live page,
+printing the page the normal way still produces the worksheet. Worth Kevin
+trying both paths on the published Artifact.
+
+`npm test`: 1/1 build fidelity + 113/113 KJV fidelity + 180/180 UI (up from
+166, 14 new checks) — 294 checks total. Verified in the harness in both
+themes and at 390px, and took real screenshots of the rendered print output
+(via `page.emulateMedia({media:"print"})`) in both Veil and Initials to
+confirm the worksheet actually looks like a worksheet, not just that the
+CSS rules parse: chrome gone, reference and verse remain, ruled lines
+survive, blanks read as fill-in lines, and a word already revealed on
+screen keeps printing in rubric red per the existing "revealing marks it"
+invariant — no extra rule was needed for that since `.tok.peeked`'s
+class-selector specificity already beats the print block's `.verse { color:
+#000 }`.
+
+Republished the Artifact with the new `index.html`; the `downloads`
+capability declaration carried forward untouched, as it has on every
+`index.html`-changing publish since it was granted.
+
 ## 2026-08-19 — merge the verse-lookup PR, then deck sharing by URL
 
 Merged PR #6 first (previous run's "Add any verse by reference"): green

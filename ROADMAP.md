@@ -18,9 +18,6 @@ _Empty — promote from Next._
 
 ## Next
 
-- [ ] **Printable drill sheets.** A print stylesheet emitting veiled and
-  first-letter worksheets. Memorization happens away from screens.
-
 - [ ] **Work the queue without going back to it.** Grading a due verse leaves you
   on that verse; getting to the next one means scrolling to the deck and pressing
   "Review now" again. A session should hand you the next due verse when you
@@ -59,6 +56,26 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Printable drill sheets. A "Print worksheet" button appears in Veil and
+  Initials modes (the only two that actually hide words) and calls
+  `window.print()`; a `@media print` stylesheet strips the app chrome —
+  masthead, mode switch, hint, deck, recite panel — down to just the
+  reference and the verse. Hidden words keep their on-screen width (no
+  reflow, matching the core layout idea) but trade their screen tint for a
+  fill-in rule, since browsers drop background colours by default when
+  printing. The ruled-line background under the verse text survives onto
+  paper too, forced past that same default, so a printed sheet still reads
+  as the same page. Colours in the print block are hardcoded rather than
+  themed tokens — the dark palette's `--rule-faint` is near-black and would
+  print as a solid bar under every blank. **Flagged, not verifiable from
+  this sandbox:** whether `window.print()` fires at all inside the
+  published Artifact's sandboxed iframe — the spec requires `allow-modals`
+  for a sandboxed frame to invoke it, and a blocked call is a silent no-op,
+  not an exception, so there's nothing to catch. The hint text next to the
+  button names the Ctrl/Cmd+P keyboard fallback for exactly that reason —
+  the `@media print` rules apply to *any* print trigger, not just the
+  button. Same category of gap as Share deck's `#deck=` fragment forwarding
+  last night: worth Kevin trying on the live page. *(2026-08-20)*
 - [x] Deck sharing by URL. A "Share deck" button base64's the deck's
   ref/text pairs (no progress, no schedule) into the page's own
   `location.hash` and shows the resulting link for the user to copy —

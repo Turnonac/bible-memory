@@ -131,6 +131,68 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ printable worksheets ======================= */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => { window.__printCalls = 0; window.print = () => { window.__printCalls++; }; });
+  await page.goto(url);
+
+  // A worksheet only makes sense for the two modes that actually hide words.
+  check("print button hidden in read mode", !(await page.isVisible("#printBtn")));
+  await page.click('button[data-mode="veil"]');
+  check("print button visible in veil mode", await page.isVisible("#printBtn"));
+  await page.click('button[data-mode="initials"]');
+  check("print button visible in initials mode", await page.isVisible("#printBtn"));
+  await page.click('button[data-mode="recite"]');
+  check("print button hidden in recite mode", !(await page.isVisible("#printBtn")));
+
+  await page.click('button[data-mode="veil"]');
+  await page.click("#printBtn");
+  eq("print button invokes window.print()", await page.evaluate(() => window.__printCalls), 1);
+
+  // The sandboxed Artifact iframe may block window.print() outright (it needs
+  // allow-modals) with no exception to catch, so the hint text names the
+  // keyboard fallback rather than silently doing nothing.
+  check("hint names the Ctrl/Cmd+P fallback in veil mode", (await page.textContent("#hint")).includes("+P"));
+
+  await page.emulateMedia({ media: "print" });
+  const printed = await page.evaluate(() => {
+    const d = sel => getComputedStyle(document.querySelector(sel)).display;
+    const veiled = document.querySelector(".tok .veiled");
+    return {
+      modes: d(".modes"),
+      deck: d(".deck"),
+      masthead: d(".masthead"),
+      hint: d(".hint"),
+      verse: d(".verse"),
+      reference: document.querySelector("#ref").textContent,
+      veiledBorder: veiled ? getComputedStyle(veiled).borderBottomWidth : null,
+    };
+  });
+  check("print media hides the mode switch", printed.modes === "none");
+  check("print media hides the deck", printed.deck === "none");
+  check("print media hides the masthead", printed.masthead === "none");
+  check("print media hides the mode hint", printed.hint === "none");
+  check("print media keeps the verse box visible", printed.verse !== "none");
+  check("print media keeps the reference heading", printed.reference.length > 0);
+  check("print media draws a fill-in line under hidden words",
+    !!printed.veiledBorder && parseFloat(printed.veiledBorder) > 0, printed.veiledBorder);
+
+  // printBtn is hidden in Recite mode, but native Ctrl/Cmd+P isn't gated by
+  // that — a print triggered from Recite mode must still neutralize the
+  // recite panel, or its dark-styled textarea prints unreadable against the
+  // forced-white page. .modes is print-hidden, so switch back to screen
+  // media to reach the mode button, then re-emulate print to check.
+  await page.emulateMedia({ media: "screen" });
+  await page.click('button[data-mode="recite"]');
+  await page.emulateMedia({ media: "print" });
+  const reciteDisplay = await page.evaluate(() => getComputedStyle(document.querySelector(".recite")).display);
+  check("print media hides the recite panel", reciteDisplay === "none", reciteDisplay);
+
+  await ctx.close();
+}
+
 /* ============================ recall scoring ============================ */
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
