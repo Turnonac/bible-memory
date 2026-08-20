@@ -716,3 +716,67 @@
     @keyframes settle { from { opacity: 0; transform: translateY(4px); } }
     @keyframes listen-pulse { 50% { opacity: .7; } }
   }
+
+  /* ---------- print: veiled & first-letter worksheets ----------
+     A worksheet always prints on plain white paper, whatever theme the
+     screen is in, so colours below are literal rather than themed tokens —
+     the dark palette's --rule-faint is near-black and would print as a
+     solid bar under every line of blanks. */
+  @media print {
+    @page { margin: 1.4cm; }
+
+    body { background: #fff; color: #000; }
+
+    /* printBtn only shows in Veil/Initials, but native Ctrl/Cmd+P isn't
+       gated by that — .recite must go too, or a print triggered from Recite
+       mode leaves its dark-styled textarea unneutralized against the
+       forced-white page. */
+    .masthead, .share-import, .modes, .hint, .deck, .recite { display: none !important; }
+
+    .wrap { max-width: none; padding: 0; margin: 0; }
+
+    .stage {
+      background: none;
+      border: 0;
+      box-shadow: none;
+      margin: 0;
+      padding: 0;
+    }
+    .stage::before {
+      content: "Verse by Heart \00b7 practice worksheet";
+      display: block;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #8c918b;
+      margin-bottom: .75rem;
+    }
+
+    .reference h2 { color: #000; }
+    .seal { display: none !important; }
+
+    /* Ruled lines stay, so a printed sheet still reads as the same page —
+       hardcoded rather than --rule-faint, and forced past the browser's
+       default "skip backgrounds" print setting, since the rule is the point
+       here rather than decoration. */
+    .verse {
+      max-width: none;
+      color: #000;
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(var(--lh) - 1px),
+        #d9dbd2 calc(var(--lh) - 1px),
+        #d9dbd2 var(--lh)
+      );
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    /* The blank keeps its screen width so the passage doesn't reflow, but
+       trades the on-screen tint (browsers drop backgrounds by default when
+       printing) for a fill-in rule under where the word would sit. */
+    .tok.blank, .tok.initial { background: none; }
+    .tok .veiled { border-bottom: 1px solid #000; }
+  }

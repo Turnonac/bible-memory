@@ -454,15 +454,17 @@
 
     $("veilControls").hidden = mode !== "veil";
     $("recite").hidden = mode !== "recite";
+    $("printBtn").hidden = mode !== "veil" && mode !== "initials";
     if (mode !== "recite") { $("result").hidden = true; }
 
     renderVerse();
 
     const peeks = peeked.size;
+    const printHint = " Print a blank worksheet with the button above, or press ⌘/Ctrl+P.";
     const notes = {
       read: "Read it through two or three times before you veil it.",
-      veil: peeks ? peeks + (peeks === 1 ? " word restored" : " words restored") + " — those are the ones to work on." : "Click any blank to bring the word back in red.",
-      initials: peeks ? peeks + (peeks === 1 ? " word restored." : " words restored.") : "Only the first letter stays. Click a word to see the rest.",
+      veil: (peeks ? peeks + (peeks === 1 ? " word restored" : " words restored") + " — those are the ones to work on." : "Click any blank to bring the word back in red.") + printHint,
+      initials: (peeks ? peeks + (peeks === 1 ? " word restored." : " words restored.") : "Only the first letter stays. Click a word to see the rest.") + printHint,
       recite: SpeechRecognition ? "Type it, or tap Speak it and say it aloud." : ""
     };
     $("hint").innerHTML = notes[mode] +
@@ -1221,6 +1223,11 @@
     peeked = new Set();
     renderStage();
   });
+
+  // window.print() is a no-op, not an error, in a sandboxed iframe without
+  // allow-modals — nothing to catch. The hint text next to the button names
+  // the keyboard fallback so a silent no-op still leaves a way to print.
+  $("printBtn").addEventListener("click", () => window.print());
 
   $("check").addEventListener("click", runCheck);
   $("peekBtn").addEventListener("click", () => setMode("read"));
