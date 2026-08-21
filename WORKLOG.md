@@ -3,6 +3,49 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-21 — work the queue without going back to it
+
+No open PRs from previous runs and `main` was already green (294/294), so
+took the newly-promoted top of **Next**: closing the loop on the review
+queue. Grading a *due* verse used to leave you sitting on that verse with no
+way forward except scrolling back up to the deck and pressing "Review now"
+again.
+
+`runCheck()` now checks `dueVerses()` again right after it updates the
+schedule (only in the `wasDue` branch — extra practice doesn't touch the
+queue, so it doesn't get the button). If anything's still waiting, a
+"Next due: &lt;ref&gt; →" button appears in the result panel, right below the
+marked-verse legend; clicking it runs the same `selectVerse()` +
+`setMode("recite")` pair the queue's own "Review now" button already used,
+so the reader lands on the next verse already in Recite mode with the
+textarea focused — one click instead of a scroll and a click. If the queue
+is empty after this grade, the button stays hidden and the existing
+"Filed for review…" line grows a second sentence: "Queue cleared — nothing
+else due."
+
+Self-review (`code-review` skill) caught one real bug before shipping, fixed
+and mutation-tested (reverted, confirmed the new check fails, restored):
+**removing the verse a pending next-due button points at left the button
+dangling.** The button's target lives in a closure variable
+(`nextDueId`) separate from whichever verse is currently active, so
+`removeVerse()` — which only reset recite-panel state when the *active*
+verse was the one removed — never noticed when the *targeted* verse was
+deleted instead. A user who graded verse A (arming "Next due: B"), then
+opened the deck and removed B without navigating away first, was left with
+a button still reading "Next due: B" that actually routed to whatever verse
+happened to land at `state.verses[0]` — a silent bait-and-switch. Fixed by
+clearing `nextDueId` and hiding the button whenever the removed id matches
+it, regardless of which verse was active.
+
+`npm test`: 1 build + 113 KJV + 189 UI (up from 180, 9 new checks) — 303
+checks total. Verified in the harness in both themes and at 390px with real
+screenshots of the result panel (button present with a verse still due,
+absent with a "Queue cleared" message, and correctly hidden during genuine
+extra practice even with another verse still due) — and drove the actual
+click through a standalone Playwright script to confirm it lands on the
+right verse, in Recite mode, with the textarea focused and no stale result
+carried over from the previous verse.
+
 ## 2026-08-20 — printable drill sheets
 
 No open PRs from previous runs and `main` was already green (280/280), so

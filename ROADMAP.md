@@ -18,11 +18,6 @@ _Empty — promote from Next._
 
 ## Next
 
-- [ ] **Work the queue without going back to it.** Grading a due verse leaves you
-  on that verse; getting to the next one means scrolling to the deck and pressing
-  "Review now" again. A session should hand you the next due verse when you
-  finish one, and say so when the queue empties.
-
 - [ ] **The deck grid leaves a gap on a small deck.** `.cards` is an `auto-fill`
   grid over a ruled background, so a deck of one or two verses shows a wide empty
   band of `--rule` beside them. Pre-existing, only visible once you remove most
@@ -56,6 +51,13 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Work the queue without going back to it. Grading a *due* review (not
+  extra practice on an already-scheduled verse) now shows a "Next due:
+  &lt;ref&gt; →" button right in the result panel — a single click lands on
+  the next waiting verse, already in Recite mode with the textarea focused,
+  no scrolling to the deck required. When that was the last one due, the
+  filed-for-review line says so ("Queue cleared — nothing else due.")
+  instead of staying silent. *(2026-08-21)*
 - [x] Printable drill sheets. A "Print worksheet" button appears in Veil and
   Initials modes (the only two that actually hide words) and calls
   `window.print()`; a `@media print` stylesheet strips the app chrome —

@@ -1261,6 +1261,110 @@ const installFakeRecognizer = () => {
     await ctx.close();
   }
 
+  /* --- grading a due verse hands off to whatever's next in the queue, so
+     getting to it doesn't mean scrolling back to the deck --- */
+  {
+    const TWO_DUE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, ease: 2.5, reps: 0, interval: 0, due: "2020-01-02" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(TWO_DUE);
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", GEN);
+    await page.click("#check");
+    check("a next-due button appears naming what's still waiting",
+      (await page.textContent("#nextDueBtn")).includes("Psalm 46:1"),
+      await page.textContent("#nextDueBtn"));
+    await page.click("#nextDueBtn");
+    eq("...and clicking it moves straight to that verse", await page.textContent("#ref"), "Psalm 46:1");
+    check("...already in Recite mode, ready to type",
+      await page.locator("#recite").isVisible());
+    await ctx.close();
+  }
+
+  /* --- deleting the verse a pending next-due button points at must not
+     leave that button dangling on a removed id --- */
+  {
+    const TWO_DUE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, ease: 2.5, reps: 0, interval: 0, due: "2020-01-02" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(TWO_DUE);
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", GEN);
+    await page.click("#check");
+    check("a next-due button is armed before the removal",
+      await page.locator("#nextDueBtn").isVisible());
+    // Remove Psalm 46:1 — the verse the button targets, not the active one —
+    // without navigating away from the result panel first.
+    const drop = page.locator(".card").filter({ hasText: "Psalm 46:1" }).locator(".drop");
+    await drop.click();
+    await drop.click(); // confirm
+    check("removing that verse retracts the next-due button",
+      !(await page.locator("#nextDueBtn").isVisible()));
+    await ctx.close();
+  }
+
+  /* --- clearing the last due review says so instead of staying silent --- */
+  {
+    const ONE_DUE = {
+      schema: 2,
+      verses: [verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(ONE_DUE);
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", GEN);
+    await page.click("#check");
+    check("no next-due button when nothing else is waiting",
+      !(await page.locator("#nextDueBtn").isVisible()));
+    check("the page says the queue is cleared",
+      (await page.textContent("#nextUp")).includes("Queue cleared"),
+      await page.textContent("#nextUp"));
+    await ctx.close();
+  }
+
+  /* --- extra practice doesn't offer a next-due hand-off, since it didn't
+     change the queue --- */
+  {
+    // Same shape as "drilling the same verse again is practice, not a review"
+    // above: the first pass is the due one and moves Genesis off today, so a
+    // second pass in the same sitting is unambiguously extra practice —
+    // rather than starting from a verse that's already not due, which the
+    // "open on the queue" wiring would immediately swap away from.
+    const TWO_DUE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, ease: 2.5, reps: 0, interval: 0, due: "2020-01-02" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(TWO_DUE);
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", GEN);
+    await page.click("#check");                         // the due review
+    await page.fill("#attempt", GEN);
+    await page.click("#check");                         // extra practice
+    check("...and the page names it extra practice",
+      (await page.textContent("#nextUp")).includes("Extra practice"));
+    check("no next-due button for a run that wasn't a due review, even with Psalm 46:1 still waiting",
+      !(await page.locator("#nextDueBtn").isVisible()));
+    await ctx.close();
+  }
+
   /* --- a corrupt schedule can't park a verse as permanently due --- */
   {
     // reps without an interval multiplies out to zero for ever.
