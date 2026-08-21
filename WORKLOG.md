@@ -5,6 +5,10 @@ Newest first. Keep entries short — the PR carries the detail.
 
 ## 2026-08-21 — work the queue without going back to it
 
+Republished the Artifact with this run's `index.html`; the `downloads`
+capability declaration carried forward untouched, as it has on every
+`index.html`-changing publish since it was granted.
+
 No open PRs from previous runs and `main` was already green (294/294), so
 took the newly-promoted top of **Next**: closing the loop on the review
 queue. Grading a *due* verse used to leave you sitting on that verse with no
