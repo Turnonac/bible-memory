@@ -416,6 +416,8 @@
   }
   .legend i { width: .55rem; height: .55rem; border-radius: 1px; display: inline-block; }
 
+  .next-due { display: block; margin-top: 1.35rem; }
+
   /* ---------- deck ---------- */
   .deck { margin-top: 3.5rem; }
   .deck-head {

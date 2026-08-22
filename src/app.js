@@ -54,6 +54,7 @@
   let veil = 50;
   let hideOrder = [];          // shuffled word indices, nested across veil levels
   let peeked = new Set();      // words revealed by clicking, this sitting
+  let nextDueId = null;        // target of the "Next due verse" button after grading
 
   function blankVerse(ref, text, source) {
     return {
@@ -653,6 +654,12 @@
       $("attempt").value = "";
       $("result").hidden = true;
     }
+    // The "next due" button can point at a verse other than the active one —
+    // removing that verse must not leave the button dangling on a deleted id.
+    if (id === nextDueId) {
+      nextDueId = null;
+      $("nextDueBtn").hidden = true;
+    }
     save();
     renderAll();
   }
@@ -698,9 +705,24 @@
       $("nextUp").textContent = sched.reps === 0
         ? "That one needs another pass — back tomorrow."
         : "Filed for review " + inDays(sched.interval) + ", on " + v.due + ".";
+
+      // Hand off to whatever's next in the queue rather than leaving the
+      // reader to scroll back to the deck and press "Review now" again.
+      const stillDue = dueVerses();
+      if (stillDue.length) {
+        nextDueId = stillDue[0].id;
+        $("nextDueBtn").hidden = false;
+        $("nextDueBtn").textContent = "Next due: " + stillDue[0].ref + " →";
+      } else {
+        nextDueId = null;
+        $("nextDueBtn").hidden = true;
+        $("nextUp").textContent += " Queue cleared — nothing else due.";
+      }
     } else {
       $("nextUp").textContent = "Extra practice — " + v.ref + " stays filed for " +
         inDays(daysUntil(v.due)) + ", on " + v.due + ".";
+      nextDueId = null;
+      $("nextDueBtn").hidden = true;
     }
 
     state.history[todayKey()] = (state.history[todayKey()] || 0) + 1;
@@ -1231,6 +1253,11 @@
 
   $("check").addEventListener("click", runCheck);
   $("peekBtn").addEventListener("click", () => setMode("read"));
+  $("nextDueBtn").addEventListener("click", () => {
+    if (!nextDueId) return;
+    selectVerse(nextDueId);
+    setMode("recite");
+  });
 
   $("speakBtn").hidden = !SpeechRecognition;
   $("speakBtn").addEventListener("click", () => {
