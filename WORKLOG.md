@@ -5,6 +5,17 @@ Newest first. Keep entries short — the PR carries the detail.
 
 ## 2026-08-22 — the deck sheet's grey slab
 
+Republished the Artifact in place with this run's `index.html`, restating the
+`downloads` capability. Worth recording how that went, since it is new
+behaviour: the first publish was **refused** because this session had never
+read the live version, and the second was refused again for resending the
+same bytes. The refusal is a good one — it hands you the live source and
+makes you merge onto it. Diffing that source against the build showed the
+only differences were the host's own injected frame-runtime skeleton (which
+must never be included in what we publish) and this run's CSS, so nothing
+published was at risk of being dropped. Re-reading the artifact and
+publishing again then went through.
+
 Started by finishing the previous night's open work: PR #9 ("hand off to the
 next due verse") was green at 303/303, mergeable, no unresolved review
 threads, and CodeRabbit had never run on it — it hit its free-tier review
