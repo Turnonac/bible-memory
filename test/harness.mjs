@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,6 +54,77 @@ export function readStarter() {
   const m = html.match(/const STARTER = \[([\s\S]*?)\n {2}\];/);
   if (!m) throw new Error("Could not locate the STARTER array in index.html");
   return JSON.parse("[" + m[1].replace(/,\s*$/, "") + "]");
+}
+
+/* ---------- pixels ---------- */
+
+/** Decode a Playwright screenshot to sampleable pixels.
+ *
+ *  Some of what this page promises is a colour in a place — a hairline between
+ *  two cards, a sheet that shows paper rather than rule-grey where no card
+ *  sits. Computed styles are not evidence for those: a frame can be declared
+ *  correctly and still never paint, which is exactly the bug that shipped a
+ *  `.cards` outline the cards drew straight over. Read the rendered pixels.
+ *
+ *  Handles what Chromium emits for a screenshot: 8-bit truecolour, with or
+ *  without alpha, uninterlaced. */
+export function readPng(buf) {
+  let p = 8, w = 0, h = 0, depth = 0, colour = 0;
+  const idat = [];
+  while (p < buf.length) {
+    const len = buf.readUInt32BE(p);
+    const type = buf.toString("ascii", p + 4, p + 8);
+    const data = buf.subarray(p + 8, p + 8 + len);
+    if (type === "IHDR") { w = data.readUInt32BE(0); h = data.readUInt32BE(4); depth = data[8]; colour = data[9]; }
+    else if (type === "IDAT") idat.push(data);
+    else if (type === "IEND") break;
+    p += 12 + len;
+  }
+  if (depth !== 8 || (colour !== 2 && colour !== 6)) {
+    throw new Error(`unsupported PNG (bit depth ${depth}, colour type ${colour})`);
+  }
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const bpp = colour === 6 ? 4 : 3;
+  const stride = w * bpp;
+  const out = Buffer.alloc(h * stride);
+  let o = 0;
+  for (let y = 0; y < h; y++) {
+    const filter = raw[o++];
+    const line = raw.subarray(o, o + stride); o += stride;
+    const cur = out.subarray(y * stride, (y + 1) * stride);
+    const prev = y ? out.subarray((y - 1) * stride, y * stride) : Buffer.alloc(stride);
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? cur[x - bpp] : 0;
+      const b = prev[x];
+      const c = x >= bpp ? prev[x - bpp] : 0;
+      const v = line[x];
+      let r;
+      if (filter === 0) r = v;
+      else if (filter === 1) r = v + a;
+      else if (filter === 2) r = v + b;
+      else if (filter === 3) r = v + ((a + b) >> 1);
+      else {
+        const est = a + b - c;
+        const pa = Math.abs(est - a), pb = Math.abs(est - b), pc = Math.abs(est - c);
+        r = v + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
+      }
+      cur[x] = r & 255;
+    }
+  }
+  return {
+    width: w,
+    height: h,
+    at(x, y) {
+      const i = y * stride + x * bpp;
+      return [out[i], out[i + 1], out[i + 2]];
+    }
+  };
+}
+
+/** True when two colours are the same to within a tolerance, so a check reads
+ *  as "this is the rule colour" rather than tripping on antialiasing. */
+export function near(a, b, tol = 12) {
+  return a.every((v, i) => Math.abs(v - b[i]) <= tol);
 }
 
 /* ---------- browser ---------- */

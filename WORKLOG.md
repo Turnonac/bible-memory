@@ -3,6 +3,70 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-22 — the deck sheet's grey slab
+
+Started by finishing the previous night's open work: PR #9 ("hand off to the
+next due verse") was green at 303/303, mergeable, no unresolved review
+threads, and CodeRabbit had never run on it — it hit its free-tier review
+limit rather than finding anything. Reviewed the diff directly, merged it,
+then took the newly-promoted top of **Next**.
+
+The roadmap described the deck-grid gap as cosmetic and rare: "only visible
+once you remove most of the starter deck." Measuring it first showed it is
+neither. `.cards` drew its hairlines the wrong way round — a `--rule`
+background showing through 1px `gap`s — so *every* grid cell no card reached
+painted as a flat grey slab. At 1100px a one-verse deck stranded a **761px**
+band of it. More importantly, `auto-fill` was only half the cause: even with
+empty tracks collapsed, a partly-filled **last row** still leaves empty
+cells, and any deck whose size doesn't divide evenly by the column count has
+one. 28 verses at three columns leaves one card in the last row and two
+empty cells beside it — so the shipped starter deck showed the slab at
+~900px, on a page nobody had edited. Decks of 5, 6, 7 and 9 verses hit it at
+four columns.
+
+So the fix goes both ways round. `auto-fit` collapses tracks no card ever
+reaches, which handles decks too small to fill one row (a lone verse now
+spans the sheet). And the sheet itself became paper — `background:
+var(--raised)`, `gap: 0` — with each card ruling its own `border-right` and
+`border-bottom`. An empty cell then paints paper, which reads as "the sheet
+continues, nothing written there yet" rather than as a rendering fault.
+Confirmed both halves are load-bearing independently: `auto-fit` alone still
+fails the empty-cell check.
+
+Self-review (`code-review` skill) caught a real bug in my own fix. I framed
+the sheet with `outline: 1px solid var(--rule); outline-offset: -1px`, which
+is declared correctly and **never paints**: Chromium renders an element's
+outline beneath its descendants, and with `gap: 0` the cards tile the sheet
+edge to edge and cover it. Verified independently by forcing the frame
+magenta and counting pixels — 0 along the top, 0 along the left; the bottom
+and right only looked framed because the last column and bottom row draw
+their own borders, and the blank trailing region let the dead outline peek
+through. Replaced with a `.cards::after`, which paints after the cards, so
+all four edges show; it lands on the same pixels the edge cards already rule,
+in the same colour, so the frame stays a single hairline.
+
+The review's second finding was that my tests didn't guard what the diff
+introduced — deleting the card hairlines outright still passed. It was right,
+and the reason is that computed style is not evidence for "a colour appears
+in a place." That is exactly the class of bug the dead outline was. So
+`test/harness.mjs` gained `readPng()`, a dependency-free PNG decoder over
+Node's own `zlib` (~40 lines, dev-only), and the deck checks now sample the
+rendered pixels: the empty cell, the seam between two cards in a row, the
+seam between two rows, and all four edges of the frame.
+
+Mutation-tested every new check against the specific thing it guards:
+deleting the card borders fails the two seam checks; deleting the `::after`
+fails all four edge checks; **restoring the dead-outline version fails the
+top and left edge checks and nothing else**, which is precisely the bug the
+reviewer found; and the original pre-fix CSS fails the empty-cell check, the
+bottom edge, and the single-verse span.
+
+`npm test`: 1 build + 113 KJV + 198 UI (up from 189, 9 new checks) — 312
+checks total. Verified in the harness at 1, 3, 5 and 28 verses, in both
+themes, at 1100/900/700/390px, and confirmed the full starter deck still
+lays out 4/3/2/1 columns at exactly the same breakpoints as before, so
+nothing changed for a full deck except that the trailing row is now paper.
+
 ## 2026-08-21 — work the queue without going back to it
 
 Republished the Artifact with this run's `index.html`; the `downloads`

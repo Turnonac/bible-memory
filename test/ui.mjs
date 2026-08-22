@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { buildPreview, launch, check, eq, report, PAGE } from "./harness.mjs";
+import { buildPreview, launch, check, eq, report, PAGE, readPng, near } from "./harness.mjs";
 
 const url = buildPreview();
 const browser = await launch();
@@ -1362,6 +1362,131 @@ const installFakeRecognizer = () => {
       (await page.textContent("#nextUp")).includes("Extra practice"));
     check("no next-due button for a run that wasn't a due review, even with Psalm 46:1 still waiting",
       !(await page.locator("#nextDueBtn").isVisible()));
+    await ctx.close();
+  }
+
+  /* --- the deck sheet never shows bare --rule ground where no card sits --- */
+  {
+    // The sheet used to be a --rule-coloured ground with 1px gaps between
+    // cards. Every grid cell no card reached therefore painted as a flat grey
+    // slab: beside a one- or two-verse deck, and — the case auto-fit alone
+    // can't reach — across the whole trailing row of any deck whose size
+    // doesn't divide evenly by the column count. Five verses at four columns
+    // is that case; so is the 28-verse starter deck at three columns.
+    const FIVE = {
+      schema: 2,
+      verses: Array.from({ length: 5 }, (_, i) =>
+        verse({ ref: "Genesis 1:" + (i + 1), text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })),
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(FIVE);
+
+    // Everything below is measured off the rendered pixels, not off computed
+    // style: a rule that is declared correctly can still fail to paint.
+    const geom = await page.evaluate(() => {
+      const sheet = document.querySelector(".cards").getBoundingClientRect();
+      const cards = [...document.querySelectorAll(".card")].map(c => {
+        const r = c.getBoundingClientRect();
+        return { x: r.x - sheet.x, y: r.y - sheet.y, w: r.width, h: r.height, right: r.right - sheet.x };
+      });
+      const rows = {};
+      cards.forEach(c => (rows[Math.round(c.y)] ||= []).push(c));
+      const ys = Object.keys(rows).map(Number).sort((a, b) => a - b);
+      const last = cards[cards.length - 1];
+      return {
+        sheetW: sheet.width, sheetH: sheet.height,
+        columns: rows[ys[0]].length,
+        lastRowCount: rows[ys[ys.length - 1]].length,
+        // seam between the first two cards of the top row
+        seamX: rows[ys[0]][0].right,
+        seamY: rows[ys[0]][0].y + rows[ys[0]][0].h / 2,
+        // seam between the two rows, under the first column
+        rowSeamX: rows[ys[0]][0].x + rows[ys[0]][0].w / 2,
+        rowSeamY: ys[1],
+        // a point well inside the trailing empty region
+        emptyX: (last.right + sheet.width) / 2,
+        emptyY: last.y + last.h / 2,
+        trailing: sheet.width - last.right
+      };
+    });
+    check("five verses lay out in a partly-filled last row (the case under test)",
+      geom.columns === 4 && geom.lastRowCount === 1 && geom.trailing > 100,
+      `columns=${geom.columns}, last row ${geom.lastRowCount}, trailing ${Math.round(geom.trailing)}px`);
+
+    const RULE = await page.evaluate(() => {
+      const el = document.createElement("span");
+      el.style.color = getComputedStyle(document.documentElement).getPropertyValue("--rule").trim();
+      document.body.appendChild(el);
+      const c = getComputedStyle(el).color.match(/\d+/g).map(Number);
+      el.remove();
+      return c;
+    });
+    const PAPER = await page.evaluate(() =>
+      // not .active — the selected card sits on --sunken, not the paper tone
+      getComputedStyle(document.querySelector(".card:not(.active)")).backgroundColor
+        .match(/\d+/g).map(Number));
+
+    const sheetPng = readPng(await page.locator(".cards").screenshot());
+    const px = (x, y) => sheetPng.at(
+      Math.max(0, Math.min(sheetPng.width - 1, Math.round(x))),
+      Math.max(0, Math.min(sheetPng.height - 1, Math.round(y))));
+
+    // The bug: this pixel used to be --rule, a flat grey slab filling the row.
+    const empty = px(geom.emptyX, geom.emptyY);
+    check("an empty cell paints paper, not the --rule grey that used to slab it",
+      near(empty, PAPER) && !near(empty, RULE),
+      `empty cell rgb(${empty}) — paper is rgb(${PAPER}), rule is rgb(${RULE})`);
+
+    // ...and the hairlines the fix moved onto the cards still actually paint.
+    // Sample a 3px window across the seam so subpixel rounding doesn't decide
+    // the result; if the border is gone the whole window is paper.
+    const ruledWithin = (x, y, dx, dy) =>
+      [-1, 0, 1].some(d => near(px(x + d * dx, y + d * dy), RULE));
+    check("a hairline still rules the seam between two cards in a row",
+      ruledWithin(geom.seamX, geom.seamY, 1, 0),
+      `window at x=${Math.round(geom.seamX)} is all paper; rule is rgb(${RULE})`);
+    check("a hairline still rules the seam between two rows",
+      ruledWithin(geom.rowSeamX, geom.rowSeamY, 0, 1),
+      `window at y=${Math.round(geom.rowSeamY)} is all paper; rule is rgb(${RULE})`);
+
+    // The frame must paint over the cards, not behind them. An outline or an
+    // inset shadow on .cards renders beneath its own descendants, so with
+    // gap:0 it survived only across the blank trailing region and vanished
+    // along the top and left — declared, and invisible.
+    const along = (n, f) => Array.from({ length: n }, (_, i) => f(2 + i * (n > 1 ? 1 : 0), i / (n - 1)));
+    const edgeRuled = (label, pts) => {
+      const bad = pts.filter(([x, y]) => !near(px(x, y), RULE));
+      check(`the sheet is framed along its ${label} edge`, bad.length === 0,
+        `${bad.length}/${pts.length} pixels off-colour, first at ${bad[0]} = rgb(${bad[0] ? px(...bad[0]) : ""})`);
+    };
+    const W = sheetPng.width, H = sheetPng.height;
+    const spread = (n, lo, hi) => Array.from({ length: n }, (_, i) => lo + (i * (hi - lo)) / (n - 1));
+    edgeRuled("top", spread(24, 4, W - 5).map(x => [x, 0]));
+    edgeRuled("bottom", spread(24, 4, W - 5).map(x => [x, H - 1]));
+    edgeRuled("left", spread(12, 4, H - 5).map(y => [0, y]));
+    edgeRuled("right", spread(12, 4, H - 5).map(y => [W - 1, y]));
+    await ctx.close();
+  }
+
+  /* --- a deck too small to fill one row fills the sheet instead of
+     stranding empty tracks beside it --- */
+  {
+    const ONE = {
+      schema: 2,
+      verses: [verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(ONE);
+    const spans = await page.evaluate(() => {
+      const s = document.querySelector(".cards").getBoundingClientRect();
+      const c = document.querySelector(".card").getBoundingClientRect();
+      return { sheet: Math.round(s.width), card: Math.round(c.width) };
+    });
+    check("a single-verse deck spans the whole sheet",
+      spans.sheet - spans.card <= 2,
+      `sheet ${spans.sheet}px vs card ${spans.card}px`);
     await ctx.close();
   }
 
