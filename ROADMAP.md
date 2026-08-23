@@ -18,11 +18,6 @@ _Empty — promote from Next._
 
 ## Next
 
-- [ ] **The deck grid leaves a gap on a small deck.** `.cards` is an `auto-fill`
-  grid over a ruled background, so a deck of one or two verses shows a wide empty
-  band of `--rule` beside them. Pre-existing, only visible once you remove most
-  of the starter deck. Cheap fix, worth doing alongside other deck work.
-
 - [ ] **Bound the recite-alignment input.** `align()` in `src/app.js` runs an
   O(n·m) LCS over the reference and typed words with no size cap. Custom verse
   creation and import both accept arbitrary-length text, so a large pasted
@@ -51,6 +46,20 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] The deck sheet no longer shows bare `--rule` ground where no card sits.
+  The gap was wider than the roadmap entry described: `.cards` painted the
+  hairlines as a `--rule` background showing through 1px gaps, so *any* grid
+  cell no card reached rendered as a flat grey slab — beside a one- or
+  two-verse deck, and across the whole trailing row of any deck whose size
+  doesn't divide evenly by the column count. The 28-verse starter deck hits
+  that second case at three columns, so the bug was visible on the shipped
+  page at ~900px, not only after deleting most of the deck. Fixed both ways
+  round: `auto-fit` collapses tracks no card ever reaches, and the sheet is
+  now paper with each card ruling its own hairlines, so an empty cell reads
+  as blank paper. Self-review caught the frame this introduced being
+  invisible along the top and left — an outline on `.cards` paints beneath
+  its own descendants, and with `gap:0` the cards covered it — so the frame
+  is a `::after` that paints over them. *(2026-08-22)*
 - [x] Work the queue without going back to it. Grading a *due* review (not
   extra practice on an already-scheduled verse) now shows a "Next due:
   &lt;ref&gt; →" button right in the result panel — a single click lands on
