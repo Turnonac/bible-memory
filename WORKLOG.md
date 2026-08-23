@@ -20,8 +20,8 @@ in the tab — `align()` builds an `(n+1)`-row `Uint16Array` matrix, so a
 (3,000) bounds both sides inside `compare()`; picked by actually measuring
 the longest KJV chapter (decompressed `src/kjv-data.js` and counted words per
 chapter) rather than guessing — Psalms 119 is 2,423 words, so 3,000 leaves
-headroom for every real passage while keeping the matrix to a few MB even
-against a pathological paste.
+headroom for every real passage while keeping the matrix to about 18 MiB
+(3,001 × 3,001 `Uint16` entries) even against a pathological paste.
 
 Self-review (`code-review` skill) caught a real bug in the first version of
 the fix, mutation-tested (reverted, confirmed the new checks failed, restored):

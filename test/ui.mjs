@@ -279,6 +279,17 @@ for (const scheme of ["light", "dark"]) {
   check(`an over-length attempt against a normal verse is refused too (note: "${overAttempt}")`,
     !(await page.isVisible("#result")) && overAttempt.toLowerCase().includes("too long"));
 
+  // A refusal has to clear whatever score is already on screen from an
+  // earlier, valid attempt — otherwise the old percentage looks like the
+  // grade for the recitation that was actually just refused.
+  await page.fill("#attempt", "I can do all things through Christ which strengtheneth me.");
+  await page.click("#check");
+  check("a normal attempt grades and shows a result", await page.isVisible("#result"));
+  await page.fill("#attempt", wordsAt(ALIGN_CAP + 1));
+  await page.click("#check");
+  check("a refusal hides the previous attempt's result rather than leaving it on screen",
+    !(await page.isVisible("#result")));
+
   await ctx.close();
 }
 

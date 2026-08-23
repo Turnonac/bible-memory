@@ -695,6 +695,7 @@
     // MAX_ALIGN_WORDS and reporting a false "exact" past that point — a
     // recitation this app can't fully check must not be able to reach mastery.
     if (tokens(v.text).length > MAX_ALIGN_WORDS || tokens(typed).length > MAX_ALIGN_WORDS) {
+      $("result").hidden = true; // don't leave an earlier attempt's score on screen for this one
       $("reciteNote").textContent = "Too long to check automatically — keep it under " + MAX_ALIGN_WORDS + " words.";
       return;
     }
