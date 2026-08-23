@@ -18,14 +18,7 @@ _Empty — promote from Next._
 
 ## Next
 
-- [ ] **Bound the recite-alignment input.** `align()` in `src/app.js` runs an
-  O(n·m) LCS over the reference and typed words with no size cap. Custom verse
-  creation and import both accept arbitrary-length text, so a large pasted
-  passage plus a long attempt can allocate a very large matrix in the tab.
-  Enforce a shared word-count limit before `compare()` runs, across manual
-  entry, import, and anything already in storage. (Flagged by CodeRabbit on
-  PR #1; pre-existing behaviour, not a regression from the `src/` extraction —
-  scoped out of that PR to keep it a pure refactor.)
+_Empty — promote from Later, or propose new work._
 
 ## Later — needs a decision from Kevin first
 
@@ -46,6 +39,15 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Bound the recite-alignment input. `align()`'s LCS is O(n·m) with an
+  (n+1)-row matrix, and neither a custom verse nor a pasted recall attempt had
+  a size cap. `MAX_ALIGN_WORDS` (3,000 — comfortably above Psalms 119, the
+  longest KJV chapter at 2,423 words) bounds `compare()`'s inputs, and
+  `runCheck()` now refuses to grade a verse or attempt past it, with a
+  readable message, rather than silently comparing only the first 3,000 words.
+  Self-review found that silent truncation alone would have let a recitation
+  that was actually wrong past the cap score 100% and reach Mastered — fixed
+  by refusing to grade instead of truncating and scoring. *(2026-08-23)*
 - [x] The deck sheet no longer shows bare `--rule` ground where no card sits.
   The gap was wider than the roadmap entry described: `.cards` painted the
   hairlines as a `--rule` background showing through 1px gaps, so *any* grid

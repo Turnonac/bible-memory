@@ -46,6 +46,12 @@
   const MAX_INTERVAL = 365;    // a year out is as good as put away
   const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+  // align()'s LCS is O(n·m) with an (n+1)-row matrix — Psalms 119, the longest
+  // KJV chapter, is 2,423 words, so this leaves headroom for any real passage
+  // while keeping a pathologically large custom verse or pasted recall attempt
+  // from allocating an unbounded matrix in the tab.
+  const MAX_ALIGN_WORDS = 3000;
+
   /* ------------------------------------------------------------------ *
    * State
    * ------------------------------------------------------------------ */
@@ -329,8 +335,8 @@
   }
 
   function compare(refText, saidText) {
-    const refRaw = tokens(refText);
-    const saidRaw = tokens(saidText);
+    const refRaw = tokens(refText).slice(0, MAX_ALIGN_WORDS);
+    const saidRaw = tokens(saidText).slice(0, MAX_ALIGN_WORDS);
     const ref = refRaw.map(normal).filter(Boolean);
     const said = saidRaw.map(normal).filter(Boolean);
     const refDisplay = refRaw.filter(w => normal(w));
@@ -683,6 +689,15 @@
     const v = active();
     const typed = $("attempt").value.trim();
     if (!typed) { $("attempt").focus(); return; }
+
+    // A verse or attempt this long would blow up align()'s O(n·m) matrix.
+    // Refuse to grade rather than silently comparing only the first
+    // MAX_ALIGN_WORDS and reporting a false "exact" past that point — a
+    // recitation this app can't fully check must not be able to reach mastery.
+    if (tokens(v.text).length > MAX_ALIGN_WORDS || tokens(typed).length > MAX_ALIGN_WORDS) {
+      $("reciteNote").textContent = "Too long to check automatically — keep it under " + MAX_ALIGN_WORDS + " words.";
+      return;
+    }
 
     const res = compare(v.text, typed);
 
