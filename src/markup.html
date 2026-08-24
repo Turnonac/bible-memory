@@ -108,7 +108,14 @@
       <div class="days" id="streakDays"></div>
     </div>
 
+    <div class="deck-search">
+      <label class="sr-only" for="deckSearch">Search your deck</label>
+      <input id="deckSearch" type="search" placeholder="Search by reference or words&hellip;" autocomplete="off">
+      <span class="caption" id="deckSearchCount" aria-live="polite"></span>
+    </div>
+
     <div class="cards" id="cards"></div>
+    <p class="cards-empty" id="cardsEmpty" hidden></p>
 
     <details class="add">
       <summary>Add a verse of your own</summary>

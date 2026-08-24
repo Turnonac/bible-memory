@@ -563,6 +563,29 @@
   .streak .day.lit { background: var(--madder-soft); border-color: var(--madder-soft); }
   .streak .day.hot { background: var(--madder); border-color: var(--madder); }
 
+  .deck-search { display: flex; align-items: center; gap: .6rem; margin-bottom: 1rem; }
+  .deck-search input {
+    flex: 1 1 16rem;
+    min-width: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .45rem .7rem;
+    font-size: .8125rem;
+  }
+  .deck-search input::placeholder { color: var(--ink-faint); }
+  .deck-search input::-webkit-search-cancel-button { appearance: none; -webkit-appearance: none; }
+  .deck-search .caption {
+    flex: none;
+    font-family: var(--mono);
+    font-size: .6875rem;
+    letter-spacing: .04em;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
   .cards {
     display: grid;
     /* auto-fit, not auto-fill: a track no card ever reaches collapses, so a
@@ -594,6 +617,16 @@
     border: 1px solid var(--rule);
     border-radius: 3px;
     pointer-events: none;
+  }
+  .cards-empty {
+    margin: 0;
+    padding: 1.5rem 1.1rem;
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    color: var(--ink-faint);
+    font-size: .875rem;
+    text-align: center;
   }
   .card {
     position: relative;
@@ -921,7 +954,14 @@
       <div class="days" id="streakDays"></div>
     </div>
 
+    <div class="deck-search">
+      <label class="sr-only" for="deckSearch">Search your deck</label>
+      <input id="deckSearch" type="search" placeholder="Search by reference or words&hellip;" autocomplete="off">
+      <span class="caption" id="deckSearchCount" aria-live="polite"></span>
+    </div>
+
     <div class="cards" id="cards"></div>
+    <p class="cards-empty" id="cardsEmpty" hidden></p>
 
     <details class="add">
       <summary>Add a verse of your own</summary>
@@ -1021,6 +1061,7 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
   let hideOrder = [];          // shuffled word indices, nested across veil levels
   let peeked = new Set();      // words revealed by clicking, this sitting
   let nextDueId = null;        // target of the "Next due verse" button after grading
+  let deckQuery = "";          // deck search box, filters the card grid only
 
   function blankVerse(ref, text, source) {
     return {
@@ -1455,10 +1496,22 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     });
   }
 
+  function matchesQuery(v, q) {
+    return v.ref.toLowerCase().includes(q) || v.text.toLowerCase().includes(q);
+  }
+
   function renderDeck() {
     const cards = $("cards");
     cards.textContent = "";
-    state.verses.forEach(v => {
+    const q = deckQuery.trim().toLowerCase();
+    const shown = q ? state.verses.filter(v => matchesQuery(v, q)) : state.verses;
+    cards.hidden = shown.length === 0;
+    $("cardsEmpty").hidden = shown.length > 0;
+    if (shown.length === 0) {
+      $("cardsEmpty").textContent = "No verses match “" + deckQuery.trim() + "”.";
+    }
+    $("deckSearchCount").textContent = q ? shown.length + " of " + state.verses.length + " shown" : "";
+    shown.forEach(v => {
       const card = el("div", "card" + (v.id === active().id ? " active" : ""));
 
       const ref = el("div", "ref");
@@ -2242,6 +2295,11 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
 
   $("attempt").addEventListener("keydown", e => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runCheck(); }
+  });
+
+  $("deckSearch").addEventListener("input", () => {
+    deckQuery = $("deckSearch").value;
+    renderDeck();
   });
 
   $("exportBtn").addEventListener("click", exportDeck);

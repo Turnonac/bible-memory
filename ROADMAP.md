@@ -39,6 +39,18 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Search the deck by reference or verse text. A search box above the card
+  grid filters it case-insensitively against both `ref` and `text`, with a
+  "N of M shown" caption and a named empty state ("No verses match…") instead
+  of a bare gap when nothing matches. Proposed and self-scoped tonight — both
+  **Now** and **Next** were empty, and the roadmap's own stated direction
+  names "a searchable verse library" explicitly, so this is that goal's first
+  slice: local-first (no schema or backend change — an ephemeral, unsaved
+  filter over the existing in-memory `state.verses`), and it starts pulling
+  its weight the moment "Add any verse by reference" (2026-08-18) grows a
+  deck past a couple of screens of cards, which the 28-verse starter deck
+  already is at three columns. *(2026-08-24)*
+
 - [x] Bound the recite-alignment input. `align()`'s LCS is O(n·m) with an
   (n+1)-row matrix, and neither a custom verse nor a pasted recall attempt had
   a size cap. `MAX_ALIGN_WORDS` (3,000 — comfortably above Psalms 119, the

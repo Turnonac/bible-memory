@@ -3,6 +3,71 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-24 — merge PR #11, then search the deck
+
+Found PR #11 open (bound the recite-alignment input): green at 315/315,
+`mergeable_state: clean`, and both CodeRabbit threads already addressed on
+the branch (hiding the stale result panel on an over-cap attempt; correcting
+the WORKLOG's memory estimate from "a few MB" to "~18 MiB") and marked
+resolved. Re-ran the full suite on that branch myself rather than trusting
+the PR body's numbers, confirmed 317/317, and squash-merged.
+
+`ROADMAP.md`'s **Now** and **Next** were both empty afterward, and **Later**
+is entirely blocked on decisions only Kevin can make (backend/accounts,
+which translation), so — per the working agreement — proposed my own item
+and recorded the reasoning in `ROADMAP.md`'s Done entry rather than here
+twice. Picked it because the roadmap's own **Direction** line names "a
+searchable verse library" outright, it's buildable with zero schema or
+backend change, and "Add any verse by reference" already made the 28-verse
+starter deck the scrollable-grid case it filters.
+
+A "Search by reference or words…" box sits right above the card grid.
+`renderDeck()` now filters `state.verses` against a module-level
+`deckQuery` (case-insensitive substring match on both `ref` and `text`)
+before rendering cards, updates a "N of M shown" caption while a filter is
+active, and swaps in a `#cardsEmpty` message ("No verses match "…"") when a
+query matches nothing rather than leaving a bare gap where the grid used to
+be. The query is intentionally *not* persisted — like `veil`, `peeked`, and
+`hideOrder`, it's viewport state, not practice history, so it doesn't touch
+`SCHEMA` or `migrate()`.
+
+**A real bug turned up in `test/ui.mjs` itself while verifying this in the
+harness**, not in the shipped feature: adding the search box shifted
+`.cards`'s vertical position enough to flip the fractional part of its
+`getBoundingClientRect().y` from a "safe" value to one where
+`page.locator(".cards").screenshot()` crops starting up to 1px *above* the
+element's real top edge, sampling the page's paper background instead of
+the deck-grid frame drawn by `.cards::after` — a false failure on the
+"sheet is framed along its top/bottom edge" checks added 2026-08-22, with no
+actual regression in the frame itself. Confirmed with a throwaway script
+against the real Chromium binary: `page.screenshot({ fullPage: true, clip })`
+using the same `getBoundingClientRect()` values samples the correct pixel
+regardless of the fractional offset, where the locator screenshot doesn't.
+Switched the test to that. Mutation-tested both directions: reverting the
+capture fix reproduces the false failure against the *unmodified* frame CSS
+(proving it really was the capture, not the CSS); reverting the frame CSS
+itself (deleting `.cards::after`) still fails all four edge checks under the
+fixed capture (proving the fix didn't blunt what the check actually guards).
+This was a pre-existing fragility in the test's measurement technique, not
+a weakened check — the invariant it guards is unchanged and still enforced.
+
+`npm test`: 1 build + 113 KJV + 214 UI (up from 203, 11 new checks) — 328
+total. New checks cover: an unfiltered grid and blank count caption on load,
+a reference-only match, a case-insensitive text match, a query matching both
+verses on a shared word, a no-match query hiding the grid and naming itself
+in the empty state, and the empty state withdrawing once the query clears.
+Mutation-tested the filter itself by short-circuiting it to always show
+every verse — six of the new checks failed, as expected. Verified visually
+in the harness (real Chromium) in both themes at 1100px, at 390px, and with
+an active filter and a no-match filter, screenshots of each.
+
+**Not done:** no match-highlighting inside the snippet text (e.g. `<mark>`
+around the hit) — the filter alone already earns its keep on a 28-verse
+deck, and highlighting is a separable follow-up rather than part of making
+the deck searchable at all.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-08-23 — merge the deck-grid PR, then bound the recite-alignment input
 
 Found PR #10 open from the previous run (the deck-grid gap fix): green
