@@ -230,6 +230,69 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ recall alignment is bounded ================ */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+
+  // align()'s LCS is O(n·m); custom verse creation has no length limit of its
+  // own, and neither does the recall textarea, so either side could allocate
+  // an unbounded matrix. MAX_ALIGN_WORDS in src/app.js caps both at 3,000
+  // words — comfortably above Psalms 119 (2,423 words, the longest KJV
+  // chapter) — and runCheck() refuses to grade past it rather than silently
+  // comparing only the first 3,000 words and reporting a false "exact" for
+  // whatever went unchecked beyond that, which could otherwise reach mastery
+  // on a recitation that was actually wrong past the cap.
+  const ALIGN_CAP = 3000;
+  const wordsAt = n => Array.from({ length: n }, (_, i) => "w" + i).join(" ");
+
+  await page.click("details.add > summary");
+  await page.fill("#newRef", "Alignment Cap 1:1");
+  await page.fill("#newText", wordsAt(ALIGN_CAP));
+  await page.click("#addForm button[type=submit]");
+  await page.click('.card .open:has-text("Alignment Cap 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", wordsAt(ALIGN_CAP));
+  await page.click("#check");
+  check("a verse exactly at the word cap still grades normally",
+    (await page.isVisible("#result")) && (await page.textContent("#pct")) === "100%");
+
+  await page.fill("#newRef", "Alignment Cap 2:1");
+  await page.fill("#newText", wordsAt(ALIGN_CAP + 1));
+  await page.click("#addForm button[type=submit]");
+  await page.click('.card .open:has-text("Alignment Cap 2:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", wordsAt(ALIGN_CAP + 1));
+  await page.click("#check");
+  const overLong = await page.textContent("#reciteNote");
+  check(`a verse over the word cap is refused, not silently graded (note: "${overLong}")`,
+    !(await page.isVisible("#result")) && overLong.toLowerCase().includes("too long"));
+
+  // The same guard has to catch an oversized attempt against an
+  // ordinary-length verse — the more realistic case a huge paste hits.
+  await page.click('.card .open:has-text("Philippians 4:13")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", wordsAt(ALIGN_CAP + 1));
+  await page.click("#check");
+  const overAttempt = await page.textContent("#reciteNote");
+  check(`an over-length attempt against a normal verse is refused too (note: "${overAttempt}")`,
+    !(await page.isVisible("#result")) && overAttempt.toLowerCase().includes("too long"));
+
+  // A refusal has to clear whatever score is already on screen from an
+  // earlier, valid attempt — otherwise the old percentage looks like the
+  // grade for the recitation that was actually just refused.
+  await page.fill("#attempt", "I can do all things through Christ which strengtheneth me.");
+  await page.click("#check");
+  check("a normal attempt grades and shows a result", await page.isVisible("#result"));
+  await page.fill("#attempt", wordsAt(ALIGN_CAP + 1));
+  await page.click("#check");
+  check("a refusal hides the previous attempt's result rather than leaving it on screen",
+    !(await page.isVisible("#result")));
+
+  await ctx.close();
+}
+
 /* ============================ deck and storage ========================== */
 {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vbh-dl-"));

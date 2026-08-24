@@ -3,6 +3,46 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-23 — merge the deck-grid PR, then bound the recite-alignment input
+
+Found PR #10 open from the previous run (the deck-grid gap fix): green
+(312/312), mergeable clean, no unresolved review threads — CodeRabbit had
+hit its OSS review rate limit rather than actually flagging anything. Pulled
+its branch and re-ran `npm test` myself before merging rather than trusting
+the PR body's numbers alone. Merged, then reset this run's branch onto the
+updated `main` and republished the Artifact with the merged `index.html`.
+
+Then took the last item in **Next**: bounding `align()`'s O(n·m) LCS. Neither
+a custom verse's text nor the recall textarea's typed attempt had a size cap,
+so a large pasted passage on either side could allocate an unbounded matrix
+in the tab — `align()` builds an `(n+1)`-row `Uint16Array` matrix, so a
+20,000-word paste on both sides is on the order of a gigabyte. `MAX_ALIGN_WORDS`
+(3,000) bounds both sides inside `compare()`; picked by actually measuring
+the longest KJV chapter (decompressed `src/kjv-data.js` and counted words per
+chapter) rather than guessing — Psalms 119 is 2,423 words, so 3,000 leaves
+headroom for every real passage while keeping the matrix to about 18 MiB
+(3,001 × 3,001 `Uint16` entries) even against a pathological paste.
+
+Self-review (`code-review` skill) caught a real bug in the first version of
+the fix, mutation-tested (reverted, confirmed the new checks failed, restored):
+**silently truncating and still grading would let a recitation that was
+genuinely wrong past word 3,000 score 100% anyway**, since neither side of
+the comparison ever saw the mismatch — three such runs would reach the
+Mastered seal on an attempt that was actually broken past the cap, directly
+against the "must be exact" ethos this app is built on. Changed `runCheck()`
+to refuse grading outright when either side exceeds the cap ("Too long to
+check automatically — keep it under 3,000 words") rather than comparing a
+truncated prefix and reporting a false exact match. `compare()` still caps
+its inputs as a hard backstop in case of some future caller, but the refusal
+in `runCheck()` is what actually keeps an unverifiable recitation from
+reaching mastery.
+
+`npm test`: 1 build + 113 KJV + 201 UI (up from 198, 3 new checks) — 315
+total. Verified in the harness in both themes at 1100px and 390px with
+screenshots of the refusal message rendered in the existing `#reciteNote`
+caption slot — no layout change, since it's the same element that already
+shows "N attempts · best N%".
+
 ## 2026-08-22 — the deck sheet's grey slab
 
 Republished the Artifact in place with this run's `index.html`, restating the
