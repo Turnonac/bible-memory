@@ -1458,7 +1458,7 @@ const installFakeRecognizer = () => {
       const ys = Object.keys(rows).map(Number).sort((a, b) => a - b);
       const last = cards[cards.length - 1];
       return {
-        sheetW: sheet.width, sheetH: sheet.height,
+        sheetX: sheet.x, sheetY: sheet.y, sheetW: sheet.width, sheetH: sheet.height,
         columns: rows[ys[0]].length,
         lastRowCount: rows[ys[ys.length - 1]].length,
         // seam between the first two cards of the top row
@@ -1490,7 +1490,18 @@ const installFakeRecognizer = () => {
       getComputedStyle(document.querySelector(".card:not(.active)")).backgroundColor
         .match(/\d+/g).map(Number));
 
-    const sheetPng = readPng(await page.locator(".cards").screenshot());
+    // A plain locator screenshot crops using the element's fractional
+    // getBoundingClientRect() truncated to whole device pixels, which — for
+    // some fractional y offsets above .cards — starts the crop up to 1px
+    // above the element's real top edge and samples the page background
+    // there instead of the frame. page.screenshot({clip}) doesn't round the
+    // same way, so it stays correct regardless of what pushes .cards up or
+    // down the page; fullPage keeps the clip valid even where .cards runs
+    // past the viewport's own height, as a wider deck does at this width.
+    const sheetPng = readPng(await page.screenshot({
+      fullPage: true,
+      clip: { x: geom.sheetX, y: geom.sheetY, width: geom.sheetW, height: geom.sheetH }
+    }));
     const px = (x, y) => sheetPng.at(
       Math.max(0, Math.min(sheetPng.width - 1, Math.round(x))),
       Math.max(0, Math.min(sheetPng.height - 1, Math.round(y))));
@@ -1692,6 +1703,49 @@ const installFakeRecognizer = () => {
       !(await page.isVisible("#queueGo")));
     check("the resting queue says what comes next",
       (await page.textContent("#queueSub")).includes("Genesis 1:1"));
+    await ctx.close();
+  }
+
+  /* --- searching the deck filters the card grid by reference or text --- */
+  {
+    const TWO = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(TWO);
+    const refs = async () => (await page.$$eval(".card .ref .open", ns => ns.map(n => n.textContent))).join(", ");
+
+    eq("no query shows every card", await page.$$eval(".card", n => n.length), 2);
+    eq("no query leaves the count caption blank", await page.textContent("#deckSearchCount"), "");
+
+    await page.fill("#deckSearch", "psalm");
+    eq("a reference match narrows to the matching card", await refs(), "Psalm 46:1");
+    eq("the count caption names what's filtered", await page.textContent("#deckSearchCount"), "1 of 2 shown");
+
+    await page.fill("#deckSearch", "REFUGE");
+    eq("a verse-text match is case-insensitive", await refs(), "Psalm 46:1");
+
+    await page.fill("#deckSearch", "god");
+    eq("a word shared by both verses' text matches both",
+      (await page.$$eval(".card .ref .open", ns => ns.map(n => n.textContent).sort())).join(", "),
+      "Genesis 1:1, Psalm 46:1");
+
+    await page.fill("#deckSearch", "zzz");
+    eq("a query matching nothing empties the grid", await page.$$eval(".card", n => n.length), 0);
+    check("the empty grid itself is hidden, not just visually blank", !(await page.isVisible("#cards")));
+    check("an empty result names the query instead of leaving a bare gap",
+      (await page.textContent("#cardsEmpty")).includes("zzz"));
+
+    await page.fill("#deckSearch", "");
+    eq("clearing the search restores every card", await page.$$eval(".card", n => n.length), 2);
+    check("the empty-state message withdraws once results return",
+      !(await page.isVisible("#cardsEmpty")));
+
     await ctx.close();
   }
 }

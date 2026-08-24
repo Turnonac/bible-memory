@@ -561,6 +561,29 @@
   .streak .day.lit { background: var(--madder-soft); border-color: var(--madder-soft); }
   .streak .day.hot { background: var(--madder); border-color: var(--madder); }
 
+  .deck-search { display: flex; align-items: center; gap: .6rem; margin-bottom: 1rem; }
+  .deck-search input {
+    flex: 1 1 16rem;
+    min-width: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .45rem .7rem;
+    font-size: .8125rem;
+  }
+  .deck-search input::placeholder { color: var(--ink-faint); }
+  .deck-search input::-webkit-search-cancel-button { appearance: none; -webkit-appearance: none; }
+  .deck-search .caption {
+    flex: none;
+    font-family: var(--mono);
+    font-size: .6875rem;
+    letter-spacing: .04em;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
   .cards {
     display: grid;
     /* auto-fit, not auto-fill: a track no card ever reaches collapses, so a
@@ -592,6 +615,16 @@
     border: 1px solid var(--rule);
     border-radius: 3px;
     pointer-events: none;
+  }
+  .cards-empty {
+    margin: 0;
+    padding: 1.5rem 1.1rem;
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    color: var(--ink-faint);
+    font-size: .875rem;
+    text-align: center;
   }
   .card {
     position: relative;

@@ -61,6 +61,7 @@
   let hideOrder = [];          // shuffled word indices, nested across veil levels
   let peeked = new Set();      // words revealed by clicking, this sitting
   let nextDueId = null;        // target of the "Next due verse" button after grading
+  let deckQuery = "";          // deck search box, filters the card grid only
 
   function blankVerse(ref, text, source) {
     return {
@@ -495,10 +496,22 @@
     });
   }
 
+  function matchesQuery(v, q) {
+    return v.ref.toLowerCase().includes(q) || v.text.toLowerCase().includes(q);
+  }
+
   function renderDeck() {
     const cards = $("cards");
     cards.textContent = "";
-    state.verses.forEach(v => {
+    const q = deckQuery.trim().toLowerCase();
+    const shown = q ? state.verses.filter(v => matchesQuery(v, q)) : state.verses;
+    cards.hidden = shown.length === 0;
+    $("cardsEmpty").hidden = shown.length > 0;
+    if (shown.length === 0) {
+      $("cardsEmpty").textContent = "No verses match “" + deckQuery.trim() + "”.";
+    }
+    $("deckSearchCount").textContent = q ? shown.length + " of " + state.verses.length + " shown" : "";
+    shown.forEach(v => {
       const card = el("div", "card" + (v.id === active().id ? " active" : ""));
 
       const ref = el("div", "ref");
@@ -1282,6 +1295,11 @@
 
   $("attempt").addEventListener("keydown", e => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runCheck(); }
+  });
+
+  $("deckSearch").addEventListener("input", () => {
+    deckQuery = $("deckSearch").value;
+    renderDeck();
   });
 
   $("exportBtn").addEventListener("click", exportDeck);
