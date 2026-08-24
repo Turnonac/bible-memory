@@ -48,7 +48,7 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
   slice: local-first (no schema or backend change — an ephemeral, unsaved
   filter over the existing in-memory `state.verses`), and it starts pulling
   its weight the moment "Add any verse by reference" (2026-08-18) grows a
-  deck past a couple screens of cards, which the 28-verse starter deck
+  deck past a couple of screens of cards, which the 28-verse starter deck
   already is at three columns. *(2026-08-24)*
 
 - [x] Bound the recite-alignment input. `align()`'s LCS is O(n·m) with an
