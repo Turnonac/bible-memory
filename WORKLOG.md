@@ -55,7 +55,28 @@ Initials/Recite) — the deck grid was explicitly the deferred scope, and the
 drill views are a different layout with the "text never reflows" invariant
 to respect, which searching doesn't touch at all today.
 
-Republished the Artifact in place with this run's `index.html`.
+**Addendum, same night — CodeRabbit found a real gap in the above.**
+`matchesQuery()` (which verses `renderDeck()` shows) and `appendHighlighted()`
+(what it marks inside them) had ended up on two different case-insensitive
+contracts: the former via `String.prototype.toLowerCase().includes()`, the
+latter via the regex from the fix above. They don't always agree — `toLowerCase()`
+decomposes Turkish `İ` into `i` plus a combining mark, so a plain-substring
+check finds `i` inside it, where regex case-folding treats `İ` as its own
+letter and doesn't. A query of `"i"` against a verse whose only near-match
+was that letter would show the card with nothing marked inside it — exactly
+the confusing state highlighting was supposed to prevent. Factored both
+functions onto one `queryRegex()` helper so that can't happen: a verse is a
+filter hit if and only if the same regex finds something in it to mark.
+`npm test`: 339 total (226 UI, up from 223) — new checks assert the
+Turkish-`İ`-only case is excluded rather than shown unmarked, alongside a
+verse with a real match nearby, and a general "every shown card has at least
+one highlight" invariant. Mutation-tested by reverting `matchesQuery()` to
+the old version — both new checks fail against it. Replied on the review
+thread with the fix commit and why the same comment's `ast-grep` ReDoS flag
+on the regex construction isn't actionable (the query is always escaped
+before building the `RegExp`, so it's never anything but a literal
+pattern), then resolved the thread. Republished the Artifact again with the
+fixed `index.html`.
 
 ## 2026-08-24 — merge PR #11, then search the deck
 
