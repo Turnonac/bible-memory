@@ -500,6 +500,26 @@
     return v.ref.toLowerCase().includes(q) || v.text.toLowerCase().includes(q);
   }
 
+  // Appends `text` to `parent`, wrapping every case-insensitive hit of `q` in
+  // a <mark> — built as DOM nodes (never innerHTML) since verse text and refs
+  // are user-supplied. Matches via a regex rather than indexOf() on a
+  // lowercased copy: toLowerCase() can change a string's length (e.g. "İ"
+  // becomes two characters), which would desync a lowercased match index
+  // from the original text and slice the wrong substring.
+  function appendHighlighted(parent, text, q) {
+    if (!q) { parent.appendChild(document.createTextNode(text)); return; }
+    const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    let last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const mark = el("mark", "hit");
+      mark.textContent = m[0];
+      parent.appendChild(mark);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+  }
+
   function renderDeck() {
     const cards = $("cards");
     cards.textContent = "";
@@ -517,7 +537,7 @@
       const ref = el("div", "ref");
       const open = el("button", "open");
       open.type = "button";
-      open.textContent = v.ref;
+      appendHighlighted(open, v.ref, q);
       open.addEventListener("click", () => selectVerse(v.id));
       ref.appendChild(open);
       if (isMastered(v)) {
@@ -543,7 +563,7 @@
       ref.appendChild(when);
 
       const snip = el("p", "snippet");
-      snip.textContent = v.text;
+      appendHighlighted(snip, v.text, q);
 
       const meter = el("div", "meter");
       const fill = el("i");

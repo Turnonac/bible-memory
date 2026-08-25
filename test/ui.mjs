@@ -1726,9 +1726,20 @@ const installFakeRecognizer = () => {
     await page.fill("#deckSearch", "psalm");
     eq("a reference match narrows to the matching card", await refs(), "Psalm 46:1");
     eq("the count caption names what's filtered", await page.textContent("#deckSearchCount"), "1 of 2 shown");
+    eq("the matching span of the reference is wrapped in a highlight mark",
+      await page.textContent(".card .ref .open mark.hit"), "Psalm");
+    eq("the highlight doesn't swallow the rest of the reference",
+      await page.$eval(".card .ref .open", n => n.textContent), "Psalm 46:1");
 
     await page.fill("#deckSearch", "REFUGE");
     eq("a verse-text match is case-insensitive", await refs(), "Psalm 46:1");
+    eq("the highlighted span keeps the verse's own casing, not the query's",
+      await page.textContent(".card .snippet mark.hit"), "refuge");
+
+    await page.fill("#deckSearch", "the");
+    eq("a query matching only one verse's text narrows to it", await refs(), "Genesis 1:1");
+    eq("every occurrence of the query is marked, not just the first",
+      await page.$$eval(".card .snippet mark.hit", ns => ns.length), 3);
 
     await page.fill("#deckSearch", "god");
     eq("a word shared by both verses' text matches both",
@@ -1745,6 +1756,38 @@ const installFakeRecognizer = () => {
     eq("clearing the search restores every card", await page.$$eval(".card", n => n.length), 2);
     check("the empty-state message withdraws once results return",
       !(await page.isVisible("#cardsEmpty")));
+    eq("clearing the query removes every highlight mark",
+      await page.$$eval("mark.hit", ns => ns.length), 0);
+
+    await ctx.close();
+  }
+
+  /* --- highlight matching is regex-safe and length-safe, not just case-insensitive --- */
+  {
+    const EDGE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Custom 1:1", text: "İstanbul and Ankara are cities.",
+                ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Custom 2:1", text: "Alpha.beta Alphaxbeta end.",
+                ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })
+      ],
+      activeId: "vCustom11",
+      history: {}
+    };
+    const { ctx, page } = await withState(EDGE);
+    const card = ref => `.card:has(.ref .open:text-is("${ref}"))`;
+
+    await page.fill("#deckSearch", "ankara");
+    eq("a match next to a length-changing lowercase letter (Turkish İ) still highlights the right span",
+      await page.textContent(`${card("Custom 1:1")} .snippet mark.hit`), "Ankara");
+    eq("highlighting never corrupts the verse text around such a letter",
+      await page.$eval(`${card("Custom 1:1")} .snippet`, n => n.textContent),
+      "İstanbul and Ankara are cities.");
+
+    await page.fill("#deckSearch", "a.");
+    eq("a literal period in the query matches only a literal period, not any character",
+      await page.$$eval(`${card("Custom 2:1")} .snippet mark.hit`, ns => ns.length), 1);
 
     await ctx.close();
   }

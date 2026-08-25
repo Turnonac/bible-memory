@@ -3,6 +3,60 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-25 — highlight search matches
+
+No open PRs from the previous run (PR #12, the deck search, had already been
+merged into `main`). `ROADMAP.md`'s **Now** and **Next** were both empty,
+and **Later** is still entirely blocked on Kevin's decisions (backend,
+translation), so — per the working agreement — picked my own item. Last
+night's entry named match-highlighting explicitly as deferred scope
+("no match-highlighting inside the snippet text"), it's the smallest
+concrete slice still open on the searchable-library thread, and it needs no
+schema or backend change, so took that over proposing something new.
+
+Every case-insensitive hit of the deck search query now gets wrapped in
+`<mark class="hit">` in both the card's reference label and its verse
+snippet. Colour choice took a moment: madder red already marks a revealed
+or incorrect word in a drill, and orpiment already marks "near miss" as a
+*text* color in the recite breakdown, so reusing either as the highlight's
+text color would collide with an existing meaning. Landed on an orpiment
+*background* wash (new `--hit-fill` token, three theme variants) under
+unchanged text — a wash reads as "the ink itself, illuminated," which
+neither existing usage does, so it doesn't compete with them.
+
+Self-review (`code-review` skill) surfaced a real bug before this shipped:
+the first version matched by lowercasing the whole string and calling
+`indexOf()`/`slice()` on the result, which silently assumes lowercasing
+never changes a string's length. It does, for some Unicode — Turkish
+capital `İ` lowercases to two characters (`i` + a combining dot). Past such
+a character, the match index found in the lowercased copy no longer lines
+up with the original string, so slicing corrupts the rendered text rather
+than just mis-highlighting it. Rewrote the matcher on `RegExp` with the
+`gi` flags instead (query characters escaped first, so it still matches
+literally) — the regex engine case-folds per match without ever
+materializing a differently-sized string, so there's no copy for an index
+to desync against.
+
+`npm test`: 1 build + 113 KJV + 223 UI (up from 214, 9 new checks) — 337
+total. New checks cover: the ref and snippet both getting a `mark.hit` on a
+match, casing preserved from the verse (not the query), every occurrence
+marked rather than just the first, marks disappearing when the query
+clears, the Turkish-`İ` case, and a literal `.` in the query matching only
+a literal period rather than acting as a regex wildcard. Mutation-tested
+the Unicode fix by reverting to the `indexOf` version: the Turkish-`İ`
+check fails against it (confirmed), while the literal-`.` check still
+passes either way since the old code was never regex-based — kept it
+anyway as a guard against a *future* regression (e.g. someone adding regex
+matching later without escaping). Verified in the harness (real Chromium)
+in both themes at 1100px and at 390px with an active filter.
+
+**Not done:** no highlighting inside the open verse display (Read/Veil/
+Initials/Recite) — the deck grid was explicitly the deferred scope, and the
+drill views are a different layout with the "text never reflows" invariant
+to respect, which searching doesn't touch at all today.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-08-24 — merge PR #11, then search the deck
 
 Found PR #11 open (bound the recite-alignment input): green at 315/315,
