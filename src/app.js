@@ -496,19 +496,37 @@
     });
   }
 
-  function matchesQuery(v, q) {
-    return v.ref.toLowerCase().includes(q) || v.text.toLowerCase().includes(q);
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
-  // Appends `text` to `parent`, wrapping every case-insensitive hit of `q` in
-  // a <mark> — built as DOM nodes (never innerHTML) since verse text and refs
-  // are user-supplied. Matches via a regex rather than indexOf() on a
+  // The one definition of "matches the deck search query" — matchesQuery()
+  // (which verses to show) and appendHighlighted() (what to mark inside them)
+  // both build their regex from this, so a verse can never be shown as a hit
+  // without a highlight to justify it, or vice versa. Case-insensitive via
+  // the regex engine's own folding rather than toLowerCase(): the two
+  // disagree for some Unicode (toLowerCase() decomposes Turkish "İ" into "i"
+  // plus a combining mark, so a plain-substring check finds "i" inside it,
+  // where regex case-folding treats "İ" as its own letter), and a shared
+  // regex is what keeps filtering and highlighting from silently diverging.
+  function queryRegex(q, flags) {
+    return new RegExp(escapeRegExp(q), flags);
+  }
+
+  function matchesQuery(v, q) {
+    const re = queryRegex(q, "i");
+    return re.test(v.ref) || re.test(v.text);
+  }
+
+  // Appends `text` to `parent`, wrapping every hit of queryRegex() in a
+  // <mark> — built as DOM nodes (never innerHTML) since verse text and refs
+  // are user-supplied. Matches against the original `text` rather than a
   // lowercased copy: toLowerCase() can change a string's length (e.g. "İ"
   // becomes two characters), which would desync a lowercased match index
   // from the original text and slice the wrong substring.
   function appendHighlighted(parent, text, q) {
     if (!q) { parent.appendChild(document.createTextNode(text)); return; }
-    const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    const re = queryRegex(q, "gi");
     let last = 0, m;
     while ((m = re.exec(text))) {
       if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));

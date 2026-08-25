@@ -1770,6 +1770,8 @@ const installFakeRecognizer = () => {
         verse({ ref: "Custom 1:1", text: "İstanbul and Ankara are cities.",
                 ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
         verse({ ref: "Custom 2:1", text: "Alpha.beta Alphaxbeta end.",
+                ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Custom 3:1", text: "İstanbul was great today.",
                 ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })
       ],
       activeId: "vCustom11",
@@ -1788,6 +1790,19 @@ const installFakeRecognizer = () => {
     await page.fill("#deckSearch", "a.");
     eq("a literal period in the query matches only a literal period, not any character",
       await page.$$eval(`${card("Custom 2:1")} .snippet mark.hit`, ns => ns.length), 1);
+
+    // "Custom 3:1" contains no plain ASCII "i" anywhere except inside the
+    // Turkish "İ" itself, where "Custom 1:1" has a real one in "cities".
+    // Filtering and highlighting must agree on whether the Turkish letter
+    // counts as a match, or a card would appear on screen with nothing
+    // marked inside it to justify why it's there.
+    await page.fill("#deckSearch", "i");
+    check("a verse whose only match is a real ASCII letter is shown",
+      !!(await page.$(card("Custom 1:1"))));
+    check("a verse whose only \"i\" is the Turkish İ is excluded, not shown unmarked",
+      !(await page.$(card("Custom 3:1"))));
+    check("every card shown for an active query has at least one highlight inside it",
+      await page.$$eval(".card", cards => cards.every(c => c.querySelector("mark.hit") !== null)));
 
     await ctx.close();
   }
