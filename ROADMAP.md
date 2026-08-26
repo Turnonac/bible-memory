@@ -39,6 +39,26 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Highlight search matches in the deck. Last night's search left this as
+  an explicit follow-up ("no match-highlighting inside the snippet text").
+  Both **Now** and **Next** were empty tonight and it was the smallest slice
+  still open on the searchable-library thread, so picked it over inventing
+  new scope. Every case-insensitive hit of the query is now wrapped in
+  `<mark class="hit">` in both the reference label and the snippet, in the
+  deck grid only — an illuminated-gold background wash (`--hit-fill`, an
+  `--orpiment` tint) rather than reusing madder red, since red already has a
+  fixed meaning here (a revealed/incorrect word in a drill) and orpiment
+  already means "near miss" as *text* color in the recite breakdown; a
+  background wash under unchanged text collides with neither. Self-review
+  (`code-review` skill) caught a real bug in the first version: matching via
+  `text.toLowerCase().indexOf()` assumes lowercasing never changes a
+  string's length, which is false for some Unicode (Turkish `İ` lowercases
+  to two characters), so a match past such a character would slice the
+  wrong span and corrupt the rendered text. Rewrote the matcher on a
+  regex (`gi` flags, query characters escaped) so case-folding never
+  produces a differently-sized string to slice against in the first place.
+  Mutation-tested by reverting to the `indexOf` version: the new Turkish-`İ`
+  check fails against it, confirming it's load-bearing. *(2026-08-25)*
 - [x] Search the deck by reference or verse text. A search box above the card
   grid filters it case-insensitively against both `ref` and `text`, with a
   "N of M shown" caption and a named empty state ("No verses match…") instead
