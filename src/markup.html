@@ -111,6 +111,12 @@
     <div class="deck-search">
       <label class="sr-only" for="deckSearch">Search your deck</label>
       <input id="deckSearch" type="search" placeholder="Search by reference or words&hellip;" autocomplete="off">
+      <label class="sr-only" for="deckSort">Sort your deck</label>
+      <select id="deckSort">
+        <option value="added">Deck order</option>
+        <option value="due">Due soonest</option>
+        <option value="az">A&ndash;Z</option>
+      </select>
       <span class="caption" id="deckSearchCount" aria-live="polite"></span>
     </div>
 

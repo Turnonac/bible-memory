@@ -62,6 +62,7 @@
   let peeked = new Set();      // words revealed by clicking, this sitting
   let nextDueId = null;        // target of the "Next due verse" button after grading
   let deckQuery = "";          // deck search box, filters the card grid only
+  let deckSort = "added";      // deck sort select, orders the card grid only
 
   function blankVerse(ref, text, source) {
     return {
@@ -538,11 +539,29 @@
     if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
   }
 
+  // "added" is a no-op — state.verses is already insertion order, since every
+  // add appends. "due" groups overdue-or-unstarted verses before scheduled
+  // ones, same rule dueVerses() sorts the review queue by (real dates before
+  // the null-due sentinel), so a verse reads "due" in the same relative spot
+  // here as it does up in the queue. "az" sorts the reference text itself,
+  // not canonical book order — this is a search aid, not a Bible index.
+  function sortDeck(list, sortKey) {
+    if (sortKey === "due") {
+      const key = v => (isDue(v) ? "0:" : "1:") + (v.due || "9999-12-31");
+      return list.slice().sort((a, b) => key(a).localeCompare(key(b)));
+    }
+    if (sortKey === "az") {
+      return list.slice().sort((a, b) => a.ref.localeCompare(b.ref, undefined, { sensitivity: "base" }));
+    }
+    return list;
+  }
+
   function renderDeck() {
     const cards = $("cards");
     cards.textContent = "";
     const q = deckQuery.trim().toLowerCase();
-    const shown = q ? state.verses.filter(v => matchesQuery(v, q)) : state.verses;
+    const matched = q ? state.verses.filter(v => matchesQuery(v, q)) : state.verses;
+    const shown = sortDeck(matched, deckSort);
     cards.hidden = shown.length === 0;
     $("cardsEmpty").hidden = shown.length > 0;
     if (shown.length === 0) {
@@ -1337,6 +1356,11 @@
 
   $("deckSearch").addEventListener("input", () => {
     deckQuery = $("deckSearch").value;
+    renderDeck();
+  });
+
+  $("deckSort").addEventListener("change", () => {
+    deckSort = $("deckSort").value;
     renderDeck();
   });
 

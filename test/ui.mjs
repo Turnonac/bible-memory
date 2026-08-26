@@ -1762,6 +1762,63 @@ const installFakeRecognizer = () => {
     await ctx.close();
   }
 
+  /* --- sorting the deck by due date or reference, independent of search --- */
+  {
+    // Due dates are relative to today, not hardcoded calendar dates, so this
+    // test doesn't quietly change its own meaning as the wall clock moves
+    // (a fixed future date eventually becomes a fixed past date).
+    const key = n => {
+      const t = new Date();
+      t.setDate(t.getDate() + n);
+      return t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+    };
+    // Insertion order deliberately matches neither the due-date order nor the
+    // alphabetical order below, so each sort mode's test can only pass if
+    // that mode actually reordered the grid. "nahum 1:8" is lowercase on
+    // purpose: it sorts after "Zephaniah 3:17" under a plain case-sensitive
+    // comparison (every capital letter precedes every lowercase one in ASCII)
+    // but between "Nahum 1:7" and "Zephaniah 3:17" once case is ignored, so
+    // the A-Z check below can only pass if the comparator actually reads its
+    // `sensitivity: "base"` option.
+    const SORTABLE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Nahum 1:7", text: "The LORD is good, a strong hold in the day of trouble.",
+                ease: 2.5, reps: 1, interval: 300, due: key(30) }),
+        verse({ ref: "Zephaniah 3:17", text: "The LORD thy God in the midst of thee is mighty.",
+                ease: 2.5, reps: 0, interval: 0, due: key(-10) }),
+        verse({ ref: "Micah 6:8", text: "He hath shewed thee, O man, what is good.",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        verse({ ref: "Amos 5:24", text: "Let judgment run down as waters.",
+                ease: 2.5, reps: 0, interval: 0, due: key(-3) }),
+        verse({ ref: "nahum 1:8", text: "Trust and obey, for there is no other way.",
+                ease: 2.5, reps: 0, interval: 0, due: key(-1) })
+      ],
+      activeId: "vNahum17",
+      history: {}
+    };
+    const { ctx, page } = await withState(SORTABLE);
+    const refs = async () => (await page.$$eval(".card .ref .open", ns => ns.map(n => n.textContent))).join(", ");
+
+    eq("deck order is the default sort", await page.$eval("#deckSort", n => n.value), "added");
+    eq("deck order matches insertion order, not due date or the alphabet", await refs(),
+      "Nahum 1:7, Zephaniah 3:17, Micah 6:8, Amos 5:24, nahum 1:8");
+
+    await page.selectOption("#deckSort", "due");
+    eq("due-soonest puts the most overdue verse first", await refs(),
+      "Zephaniah 3:17, Amos 5:24, nahum 1:8, Micah 6:8, Nahum 1:7");
+
+    await page.selectOption("#deckSort", "az");
+    eq("A-Z sorts by reference, case-insensitively", await refs(),
+      "Amos 5:24, Micah 6:8, Nahum 1:7, nahum 1:8, Zephaniah 3:17");
+
+    await page.selectOption("#deckSort", "due");
+    await page.fill("#deckSearch", "good");
+    eq("a sort mode composes with an active search filter", await refs(), "Micah 6:8, Nahum 1:7");
+
+    await ctx.close();
+  }
+
   /* --- highlight matching is regex-safe and length-safe, not just case-insensitive --- */
   {
     const EDGE = {
