@@ -3,6 +3,66 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-26 — merge PR #13, then sort the deck
+
+Found PR #13 open (highlight search matches): `mergeable_state: clean`, CI
+green (`CodeRabbit` context reporting success — rate-limited rather than
+actually reviewing), and its one CodeRabbit thread (filtering/highlighting
+disagreeing on Turkish `İ`) already fixed on the branch and marked resolved.
+Pulled the branch into a worktree, re-ran `npm test` myself (340 total: 1
+build + 113 KJV + 226 UI) rather than trusting the PR body's numbers, read
+the `src/app.js` diff directly — DOM text nodes throughout, never
+`innerHTML`, so no injection risk from user-supplied verse text — and
+squash-merged.
+
+`ROADMAP.md`'s **Now** and **Next** were both empty afterward and **Later**
+stays blocked on decisions only Kevin can make, so proposed my own item
+per the working agreement. Picked deck sorting: search (2026-08-24) and
+highlighting (2026-08-25) both shipped on the "searchable verse library"
+thread this roadmap names as direction, and a deck long enough to need
+filtering is exactly as long as it needs ordering. A `<select id="deckSort">`
+next to the search box offers "Deck order" (the existing insertion order,
+a no-op), "Due soonest", and "A–Z" — resolved client-side in `renderDeck()`
+against whatever the search already filtered to, never touching
+`state.verses`'s own order, same "view state, not practice history" treatment
+`deckQuery` already gets.
+
+"Due soonest" reuses `dueVerses()`'s own ordering rule rather than inventing
+a second one: overdue real dates sort before the `due: null` sentinel
+("unstarted" verses read as due, same as they already do on their card's
+"due" chip), then scheduled-future dates ascending. Implemented as one
+comparator key (`"0:" + due` for anything currently due, `"1:" + due` for
+anything scheduled ahead) rather than filtering into two arrays and
+concatenating — cheaper and there's only one place to get the boundary
+wrong instead of two.
+
+This was the app's first `<select>`, so no existing component style to
+match beyond the `.deck-search input`'s own border/radius/font treatment,
+which it now shares — no new color tokens, a chevron built from two
+gradient triangles reading off `--ink-faint` instead of an image asset,
+same as everywhere else the app draws a hairline affordance without one.
+
+`npm test`: 1 build + 113 KJV + 231 UI (up from 226, 5 new checks) — 345
+total. New checks: deck order matches insertion order untouched by either
+due date or the alphabet; due-soonest puts the most overdue verse first, an
+unstarted verse after real overdue dates but before anything scheduled
+ahead, matching the queue's own rule; A–Z sorts case-insensitively; and a
+sort mode composes correctly with an active search filter rather than
+re-sorting the unfiltered deck. Mutation-tested by making `sortDeck()` an
+identity function — all three new order-dependent checks failed as expected
+(the fourth, "deck order is the default", couldn't fail this way since it
+tests the no-op case directly); restored and confirmed 345/345 again.
+Self-review (`code-review` skill) found nothing to fix.
+
+Verified in the harness (real Chromium) in both themes at 1100px and 390px:
+the select sits inline with the search input and count caption at both
+widths with no wrap or clipping, even with all three populated at once
+(a live count plus a non-default sort). Also confirmed visually that
+switching "Due soonest" actually reorders the rendered grid, not just the
+underlying comparator.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-08-25 — highlight search matches
 
 No open PRs from the previous run (PR #12, the deck search, had already been

@@ -39,6 +39,21 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Sort the deck by due date or reference. A "Deck order / Due soonest /
+  A–Z" select sits beside the search box and reorders the card grid without
+  touching `state.verses` itself (view-only, like `deckQuery`). Both **Now**
+  and **Next** were empty tonight; picked as the next-smallest slice on the
+  "searchable verse library" thread now that search (2026-08-24) and
+  highlighting (2026-08-25) are both shipped — a deck past a couple screens
+  of cards is exactly as much a sorting problem as a filtering one, and this
+  needs no schema or backend change. "Due soonest" reuses `dueVerses()`'s own
+  rule (overdue real dates before the null-due "unstarted" sentinel, then
+  future-scheduled dates ascending) so a verse lands in the same relative
+  spot here as it does in the review queue above it. "A–Z" sorts the
+  reference text itself, not canonical book order — a search aid, not a
+  Bible index, and building real canon ordering would mean threading the
+  `kjv-data.js` book list into a path that today has none of that
+  machinery. *(2026-08-26)*
 - [x] Highlight search matches in the deck. Last night's search left this as
   an explicit follow-up ("no match-highlighting inside the snippet text").
   Both **Now** and **Next** were empty tonight and it was the smallest slice
