@@ -1762,6 +1762,110 @@ const installFakeRecognizer = () => {
     await ctx.close();
   }
 
+  /* --- filtering the deck by status (due / mastered / not started) --- */
+  {
+    // Relative to today, like the sort test below, so the fixture's meaning
+    // doesn't drift as the wall clock moves.
+    const fkey = n => {
+      const t = new Date();
+      t.setDate(t.getDate() + n);
+      return t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+    };
+    const FILTERABLE = {
+      schema: 2,
+      verses: [
+        // mastered, but scheduled well into the future — not due.
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 3, best: 99, last: fkey(-1),
+                recent: [96, 97, 99], ease: 2.6, reps: 4, interval: 400, due: fkey(30) }),
+        // recited before, overdue now — due but not new, not mastered.
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 1, best: 60, last: fkey(-10),
+                recent: [60], ease: 2.5, reps: 1, interval: 1, due: fkey(-3) }),
+        // never recited — due (as "unstarted" already reads on its card) and new.
+        verse({ ref: "Micah 6:8", text: "He hath shewed thee, O man, what is good.",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        // recited before, scheduled ahead — neither due, new, nor mastered.
+        verse({ ref: "Romans 8:28", text: "And we know that all things work together for good.",
+                attempts: 2, best: 80, last: fkey(-1), recent: [80, 80],
+                ease: 2.5, reps: 2, interval: 30, due: fkey(20) })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(FILTERABLE);
+    const refs = async () => (await page.$$eval(".card .ref .open", ns => ns.map(n => n.textContent))).join(", ");
+
+    eq("\"all verses\" is the default filter", await page.$eval("#deckFilter", n => n.value), "all");
+    eq("no filter shows every card", await refs(), "Genesis 1:1, Psalm 46:1, Micah 6:8, Romans 8:28");
+    eq("no filter leaves the count caption blank", await page.textContent("#deckSearchCount"), "");
+
+    await page.selectOption("#deckFilter", "due");
+    eq("the due filter shows overdue and never-started verses, not scheduled or future ones",
+      await refs(), "Psalm 46:1, Micah 6:8");
+    eq("the count caption reports the filter even with no search query",
+      await page.textContent("#deckSearchCount"), "2 of 4 shown");
+
+    await page.selectOption("#deckFilter", "mastered");
+    eq("the mastered filter shows only a verse with three recent scores at or above 95%",
+      await refs(), "Genesis 1:1");
+
+    await page.selectOption("#deckFilter", "new");
+    eq("the not-started filter shows only a verse with zero attempts",
+      await refs(), "Micah 6:8");
+
+    await page.selectOption("#deckFilter", "due");
+    await page.fill("#deckSearch", "micah");
+    eq("a filter composes with an active search query", await refs(), "Micah 6:8");
+
+    await page.selectOption("#deckSort", "az");
+    await page.fill("#deckSearch", "");
+    eq("a sort mode composes with an active filter", await refs(), "Micah 6:8, Psalm 46:1");
+    await page.selectOption("#deckSort", "added");
+
+    await page.selectOption("#deckFilter", "mastered");
+    await page.fill("#deckSearch", "romans");
+    check("the empty grid is hidden when a filter and query together match nothing",
+      !(await page.isVisible("#cards")));
+    eq("the empty state names both the filter and the query when both rule everything out",
+      await page.textContent("#cardsEmpty"), "No mastered verses match “romans”.");
+
+    await ctx.close();
+  }
+
+  /* --- filter empty-state wording when the filter alone matches nothing --- */
+  {
+    const fkey = n => {
+      const t = new Date();
+      t.setDate(t.getDate() + n);
+      return t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+    };
+    const ALL_STARTED = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 1, best: 60, last: fkey(-1),
+                recent: [60], ease: 2.5, reps: 1, interval: 10, due: fkey(9) }),
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 1, best: 70, last: fkey(-1),
+                recent: [70], ease: 2.5, reps: 1, interval: 10, due: fkey(9) })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(ALL_STARTED);
+
+    await page.selectOption("#deckFilter", "due");
+    eq("nothing due reads as a plain statement, not a search-style message",
+      await page.textContent("#cardsEmpty"), "Nothing due right now.");
+
+    await page.selectOption("#deckFilter", "new");
+    eq("no unstarted verses names that directly",
+      await page.textContent("#cardsEmpty"), "Every verse has been attempted at least once.");
+
+    await page.selectOption("#deckFilter", "mastered");
+    eq("no mastered verses names that directly",
+      await page.textContent("#cardsEmpty"), "No verses mastered yet.");
+
+    await ctx.close();
+  }
+
   /* --- sorting the deck by due date or reference, independent of search --- */
   {
     // Due dates are relative to today, not hardcoded calendar dates, so this

@@ -564,7 +564,7 @@
   .streak .day.lit { background: var(--madder-soft); border-color: var(--madder-soft); }
   .streak .day.hot { background: var(--madder); border-color: var(--madder); }
 
-  .deck-search { display: flex; align-items: center; gap: .6rem; margin-bottom: 1rem; }
+  .deck-search { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-bottom: 1rem; }
   .deck-search input {
     flex: 1 1 16rem;
     min-width: 0;
