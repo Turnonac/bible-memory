@@ -39,6 +39,19 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Filter the deck by status. A "Filter your deck" select next to search
+  and sort narrows the card grid to All verses / Due for review / Mastered /
+  Not started, composing with search and sort exactly like they already
+  compose with each other (view-only, like `deckQuery` and `deckSort` — no
+  schema change). Both **Now** and **Next** were empty tonight; picked as the
+  next-smallest slice on the "searchable verse library" thread after search
+  (2026-08-24), highlighting (2026-08-25), and sorting (2026-08-26) — a deck
+  long enough to need ordering is exactly as long as it needs narrowing down
+  to "what's actually due right now" or "what have I not started yet."
+  Zero results (whether from the filter alone, or the filter combined with a
+  search query that also rules everything out) gets a named empty state
+  rather than a bare gap, same as search's own empty state already does.
+  *(2026-08-27)*
 - [x] Sort the deck by due date or reference. A "Deck order / Due soonest /
   A–Z" select sits beside the search box and reorders the card grid without
   touching `state.verses` itself (view-only, like `deckQuery`). Both **Now**

@@ -62,6 +62,7 @@
   let peeked = new Set();      // words revealed by clicking, this sitting
   let nextDueId = null;        // target of the "Next due verse" button after grading
   let deckQuery = "";          // deck search box, filters the card grid only
+  let deckFilter = "all";      // deck filter select, narrows the card grid only
   let deckSort = "added";      // deck sort select, orders the card grid only
 
   function blankVerse(ref, text, source) {
@@ -519,6 +520,34 @@
     return re.test(v.ref) || re.test(v.text);
   }
 
+  // "due" reuses isDue() as-is, so it includes never-started verses — the
+  // same "due" chip a card already shows them under (line ~596), rather than
+  // inventing a second, disagreeing notion of "due" here. "new" (never
+  // recited) is a separate facet from "due": a fresh verse is both, an
+  // overdue-but-once-recited verse is due but not new.
+  function matchesFilter(v, filter) {
+    if (filter === "due") return isDue(v);
+    if (filter === "mastered") return isMastered(v);
+    if (filter === "new") return !v.attempts;
+    return true;
+  }
+
+  // Deliberately distinct wording for "no results because of the filter
+  // alone" versus "no results because the search query also ruled things
+  // out" — the reader needs to know whether clearing the search box would
+  // help, since the filter select alone (the deck is never empty; see
+  // removeVerse()) can already produce zero cards.
+  function emptyStateMessage(filter, query) {
+    const noun = filter === "due" ? "due" : filter === "mastered" ? "mastered" : filter === "new" ? "not-started" : "";
+    if (query) {
+      return "No" + (noun ? " " + noun : "") + " verses match “" + query + "”.";
+    }
+    if (filter === "due") return "Nothing due right now.";
+    if (filter === "mastered") return "No verses mastered yet.";
+    if (filter === "new") return "Every verse has been attempted at least once.";
+    return "";
+  }
+
   // Appends `text` to `parent`, wrapping every hit of queryRegex() in a
   // <mark> — built as DOM nodes (never innerHTML) since verse text and refs
   // are user-supplied. Matches against the original `text` rather than a
@@ -560,14 +589,16 @@
     const cards = $("cards");
     cards.textContent = "";
     const q = deckQuery.trim().toLowerCase();
-    const matched = q ? state.verses.filter(v => matchesQuery(v, q)) : state.verses;
+    const base = deckFilter === "all" ? state.verses : state.verses.filter(v => matchesFilter(v, deckFilter));
+    const matched = q ? base.filter(v => matchesQuery(v, q)) : base;
     const shown = sortDeck(matched, deckSort);
     cards.hidden = shown.length === 0;
     $("cardsEmpty").hidden = shown.length > 0;
     if (shown.length === 0) {
-      $("cardsEmpty").textContent = "No verses match “" + deckQuery.trim() + "”.";
+      $("cardsEmpty").textContent = emptyStateMessage(deckFilter, deckQuery.trim());
     }
-    $("deckSearchCount").textContent = q ? shown.length + " of " + state.verses.length + " shown" : "";
+    $("deckSearchCount").textContent = (q || deckFilter !== "all")
+      ? shown.length + " of " + state.verses.length + " shown" : "";
     shown.forEach(v => {
       const card = el("div", "card" + (v.id === active().id ? " active" : ""));
 
@@ -1356,6 +1387,11 @@
 
   $("deckSearch").addEventListener("input", () => {
     deckQuery = $("deckSearch").value;
+    renderDeck();
+  });
+
+  $("deckFilter").addEventListener("change", () => {
+    deckFilter = $("deckFilter").value;
     renderDeck();
   });
 

@@ -3,6 +3,81 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-27 — filter the deck by status
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (345 checks: 1 build + 113 KJV + 231 UI), and
+`ROADMAP.md`'s **Now** and **Next** were both empty, so — per the working
+agreement — proposed my own item. The last three nights (search, highlight,
+sort) all worked the "searchable verse library" thread the roadmap names as
+direction; narrowing the grid to a status is the same shape of small,
+schema-free slice, and it's the piece none of those three cover — sorting
+by due date orders the whole deck but doesn't hide anything, and search only
+matches text, not a verse's practice state.
+
+A `<select id="deckFilter">` sits between the search box and the sort
+select: **All verses / Due for review / Mastered / Not started**. It's
+view state exactly like `deckQuery` and `deckSort` — a new `deckFilter`
+module variable, no `SCHEMA` bump, no `migrate()` branch. `renderDeck()`
+now composes all three: filter narrows `state.verses` first, search then
+narrows that, `sortDeck()` orders what's left — so a filter and a search
+query rule out results independently and correctly stack, verified
+directly (`due` + `"micah"` → just the one due-and-matching verse; `az`
+sort + `due` filter → the two due verses in alphabetical order, not deck
+order).
+
+"Due for review" reuses `isDue()` as-is rather than inventing a second
+notion of due — it already includes never-started verses (a card's own
+`when` chip already reads "due" for an unstarted verse, so a filter named
+"Due" that disagreed with the chip sitting right next to it would be
+confusing). "Not started" is a deliberately separate facet (`!v.attempts`):
+a fresh verse is both due and not-started, an overdue-but-once-recited verse
+is due but not new. They're not a mutually exclusive partition, same as the
+existing due-chip and mastered-seal aren't either.
+
+Zero results gets a named empty state, same idiom the search feature
+already established, but distinguishes *why* nothing's showing: "Nothing
+due right now." / "No verses mastered yet." / "Every verse has been
+attempted at least once." when the filter alone is empty, versus "No
+mastered verses match "romans"." when a search query on top of the filter
+is what emptied it — the reader needs to know whether clearing the search
+box would actually help.
+
+**A real layout bug turned up while checking 390px, not from any test.**
+`.deck-search` had no `flex-wrap`, so a second `<select>` joining the
+existing search input and sort select had nowhere to go at narrow widths —
+the search input (the only shrinkable item, `flex: 1 1 16rem`) got
+squeezed down to a few visible characters of its own placeholder while both
+selects held their fixed width. Added `flex-wrap: wrap` to `.deck-search`;
+confirmed via the harness that the search input now takes its own full-width
+row at 390px with the two selects wrapping to the row below, in both
+themes, rather than three controls fighting for one row nothing was reserved
+for.
+
+`npm test`: 1 build + 113 KJV + 245 UI (up from 231, 14 new checks) — 359
+total. New checks cover: the default filter and its blank caption, each of
+the three status filters in isolation (mastered relies on
+`MASTERY_RUNS`/`MASTERY_SCORE` — three recent scores at or above 95%),
+composition with an active search query, composition with a sort mode, and
+all four empty-state messages (three filter-alone wordings plus the
+filter+query combined wording). Mutation-tested by reducing `matchesFilter`
+to always return `true` — all 10 filtering/composition/empty-state checks
+that depend on it failed, as expected; restored and confirmed 359/359
+again. Self-review (`code-review` skill) found nothing to fix.
+
+Verified in the harness (real Chromium) in both themes at 1100px and 390px:
+the toolbar row (search, filter, sort) sits inline at 1100px exactly as it
+already did with just search and sort, and wraps cleanly to two rows at
+390px with the search input on its own full-width line. Confirmed the
+count caption and named empty-state text render correctly for a filter
+alone, a filter with no matches, and a filter combined with a
+non-matching search query, using a hand-built fixture with one mastered,
+one overdue-and-attempted, one never-started, and one scheduled-ahead
+verse so each filter's boundary is actually exercised rather than assumed
+from the code.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-08-26 — merge PR #13, then sort the deck
 
 Found PR #13 open (highlight search matches): `mergeable_state: clean`, CI
