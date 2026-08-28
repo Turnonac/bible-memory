@@ -39,6 +39,32 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Edit a verse's reference or text in place. An "edit" control sits next
+  to "remove" on every card; it swaps the card's reference/snippet for an
+  inline form (Reference, Verse text, Save/Cancel) prefilled with the
+  card's current values. Saving updates `ref`/`text` on the existing verse
+  object — same `id` — so the SM-2 schedule, attempt history, and streak
+  all survive a fixed typo, unlike the only previous option (delete and
+  re-add, which threw all of that away). Both **Now** and **Next** were
+  empty tonight; picked this over continuing the searchable-library thread
+  (search/highlight/sort/filter, four straight nights) because it's a
+  different, real gap: a typo in a custom-added verse had no correction
+  path at all, and CLAUDE.md's own "must be exact" ethos makes an
+  uneditable typo worse here than in an ordinary app. Editing any verse —
+  starter or custom — flips its `source` to `"custom"`, since a hand-edited
+  verse can no longer claim to be the 1769 text `test/verify-kjv.mjs`
+  checks the starter deck against. Editing the *active* verse resets
+  `peeked`/`hideOrder` (indices into the old text — a changed word count
+  would leave them pointing at the wrong words or past the end) and clears
+  the recite textarea/result panel; editing any other card leaves the
+  active drill untouched. Self-review (`code-review` skill) caught a real
+  bug before shipping: `renderDeck()` rebuilds every card's DOM from
+  `state.verses` on *any* unrelated change (a search keystroke, a filter
+  or sort change, grading a due verse, removing a different card), which
+  silently discarded whatever was mid-typed in an open edit form. Fixed by
+  keeping a live `editDraft` synced from the form's own `input` events and
+  reading the rebuilt form from that instead of the unchanged verse on
+  disk. *(2026-08-28)*
 - [x] Filter the deck by status. A "Filter your deck" select next to search
   and sort narrows the card grid to All verses / Due for review / Mastered /
   Not started, composing with search and sort exactly like they already
