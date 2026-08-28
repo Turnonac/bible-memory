@@ -1675,6 +1675,13 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     // peeked/hideOrder hold word indices into the *old* text; a changed word
     // count would leave them pointing at the wrong words, or past the end.
     if (v.id === active().id) {
+      // A "Speak it" session left running would keep listening against the
+      // verse we just rewrote — its eventual transcript (spoken against the
+      // *old* text) would grade via runCheck()'s `active()` lookup against
+      // the *new* one, same class of bug selectVerse()/removeVerse() already
+      // guard against for exactly this reason.
+      endListening(false);
+      setSpeakStatus("", false);
       peeked = new Set();
       hideOrder = [];
       $("attempt").value = "";

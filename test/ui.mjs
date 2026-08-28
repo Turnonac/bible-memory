@@ -1076,6 +1076,38 @@ const installFakeRecognizer = () => {
 }
 
 {
+  // Same class of bug as removing the recited verse mid-listen, but here the
+  // verse object itself survives — editing it in place must still stop the
+  // listener, or its eventual onend hands runCheck() a transcript spoken
+  // against the *old* text to grade against the *newly edited* one via
+  // active(), scoring (and potentially scheduling) a recitation the reader
+  // never actually made against that text.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Genesis 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "some words spoken before the edit");
+
+  await page.click(".cards .card.active .stat .edit");
+  await page.fill("#editText", "A brand new verse text after editing.");
+  await page.click(".card-edit .actions button[type=submit]");
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+
+  const attemptsOf2 = () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Genesis 1:1")?.attempts);
+  eq("editing the active verse mid-listen discards the stale transcript instead of grading it",
+    await attemptsOf2(), 0);
+  check("no bogus grade is shown for a transcript spoken against the pre-edit text",
+    await page.isHidden("#result"));
+  await ctx.close();
+}
+
+{
   // Every recognition event overwrites the recall box with the transcript so
   // far; read-only while listening stops that from silently discarding a
   // manual edit typed into the same field mid-session.
