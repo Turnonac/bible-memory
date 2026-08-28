@@ -79,6 +79,37 @@ test coverage.
 
 Republished the Artifact in place with this run's `index.html`.
 
+**Addendum, same night — CodeRabbit's PR review found one more real bug,
+same shape as the self-review catch above but on a different code path.**
+`saveVerseEdit()` reset the recite textarea/result panel for the active
+verse but never stopped an in-progress "Speak it" session. A listener left
+running would keep listening against the verse just rewritten; its
+eventual `onend` hands the stale transcript (spoken against the *old*
+text) to `runCheck()`, which grades it via `active()` — the same, now-
+mutated verse object — against the *new* text. Exactly the class of bug
+already fixed once for `removeVerse()`/`selectVerse()` on 2026-08-17
+("a stale listener's transcript lands on whatever verse becomes active
+next"), just reached through a path that mutates the verse in place rather
+than replacing the active one. Caught it independently from CodeRabbit's
+summary-level "Merge Risk" note before its inline comment with the same
+diagnosis and proposed fix arrived a few minutes later. Fixed with
+`endListening(false)` + `setSpeakStatus("", false)`, matching the existing
+pattern exactly. New regression test starts a fake "Speak it" session,
+edits the active verse mid-listen, and asserts the stale transcript is
+discarded rather than graded — mutation-tested by reverting the fix: the
+unfixed code doesn't just mis-grade, it hangs (the listener never stops,
+so the button never reverts from "Stop listening" and the test's own wait
+times out) — a stronger signal than a value mismatch would have been.
+`npm test`: 383 total (270 UI, up from 268). Replied on the review thread
+with the fix commit and resolved it. CodeRabbit's other finding — a
+"Docstring Coverage" pre-merge check below its 80% threshold — wasn't a
+threaded comment and isn't one to act on: this codebase deliberately
+writes no docstrings (`CLAUDE.md`'s "default to writing no comments"),
+and none of the existing 1,479 lines of `src/app.js` carry any either;
+adding them only to this diff's five touched functions would make it the
+inconsistent one. Republished the Artifact again with the fixed
+`index.html`.
+
 ## 2026-08-27 — filter the deck by status
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned
