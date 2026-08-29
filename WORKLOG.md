@@ -3,6 +3,117 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-29 — merge the edit-in-place PR, then "Look up" in the edit form
+
+Found PR #16 open from the previous run ("Edit a verse's reference or text
+in place"): its one CodeRabbit review thread (a stale "Speak it" listener
+surviving an active-verse edit) was already fixed and marked resolved on
+the branch. Pulled the branch into a worktree, ran `npm test` myself rather
+than trusting the PR body's numbers (384 total: 1 build + 113 KJV + 270
+UI), read the diff directly — DOM text APIs throughout, no `innerHTML` — and
+squash-merged. Republished the Artifact with the merged `index.html`.
+
+`ROADMAP.md`'s **Now** and **Next** were both empty afterward, but last
+night's PR named its own next slice in "Deliberately not done": the new
+edit form had no "Look up" button, unlike "Add a verse of your own," which
+can re-fetch the exact 1769 KJV text for a reference instead of requiring
+the verse text typed by hand. Took that over proposing something new — a
+deferred slice a previous run already scoped beats inventing fresh work
+when both queues are empty.
+
+A "Look up" button now sits beside the edit form's Reference field
+(`.card-edit .reflookup`, mirroring the add form's `.form .reflookup`
+layout), reusing the same `lookupReference()` the add form already calls —
+one lookup implementation, not two. A successful lookup normalises the
+reference and fills the verse text with the exact KJV wording, matching the
+add form's behavior verse-for-verse (literally: the same "John 3:16" lookup
+test both forms now share found the exact same wording in each). Saving
+after a lookup goes through the unchanged `saveVerseEdit()` path, so it
+marks the verse `"custom"` and preserves attempt history exactly like a
+hand-typed correction — consistent with the add form's own lookup path,
+which also marks a looked-up verse `"custom"` once it's actually added.
+
+**Self-review (`code-review` skill) caught a real race before shipping.**
+The lookup is asynchronous (`lookupReference()` awaits `DecompressionStream`
+decompressing the bundled KJV), and the first version applied its result by
+writing straight into the shared, module-level `editDraft` — the *live*
+variable, not a stable reference. If the user cancelled the form, or
+switched to editing a different card, before the lookup resolved,
+`editDraft` had already moved on to something else (or become `null`) by
+the time the `await` returned. The stale write landed on whatever draft was
+now live — silently overwriting an unrelated card's in-progress edit with
+the abandoned lookup's result. Confirmed this is reachable, not
+theoretical: cancel-then-reopen the *same* card also swaps in a fresh
+`editDraft` object, so even staying on the same verse doesn't protect
+against it.
+
+Fixed by capturing the draft object's own identity (`draftAtStart =
+editDraft`) when the lookup starts, and discarding the result if
+`editDraft !== draftAtStart` by the time it resolves — an identity check,
+not an id check, so it catches the same-card-reopened case too, which a
+`v.id` comparison alone would have missed. The success path now also calls
+`renderDeck()` rather than poking the (possibly stale, possibly detached)
+form's own DOM nodes directly, so a looked-up result reaches the screen
+correctly even if an unrelated re-render happened to land in between.
+
+Regression test gates the fix on a real async race, not a synchronous
+stand-in: patches `Response.prototype.text` to gate on the *first* call
+only (`kjvIndex()` caches its promise, so exactly one lookup per fresh page
+load ever reaches it), starts a lookup on one card, abandons it for a
+different card before releasing the gate, then confirms the second card's
+fields are untouched once the stale lookup is allowed to finish.
+Mutation-tested by reverting to the original `editDraft`-by-reference
+write (keeping everything else, including the newly-added `renderDeck()`
+call, so only the identity guard itself was removed): both new checks
+failed exactly as expected (`expected "Psalm 46:1", got "John 3:16"` — the
+abandoned card's looked-up text leaking into the card actually being
+edited), confirming the guard is what's carrying the fix, not something
+else in the same diff. Restored and confirmed 288/288 UI checks again.
+
+`npm test`: 1 build + 113 KJV + 288 UI (up from 270, 18 new checks) — 402
+total. Verified in the harness (real Chromium) in both themes and at
+390px: the Reference-field-plus-button row sits correctly inside the
+narrower `.card-edit` layout (adapted from the add form's own
+`.reflookup` styling, since the edit form uses a different container
+class), a successful lookup fills both fields with the exact KJV wording
+in a screenshot taken after the fact, and dark theme keeps the button's
+contrast readable against `--sunken`.
+
+Republished the Artifact in place with this run's `index.html`.
+
+**Addendum, same night — CodeRabbit's PR review found one more real gap in
+the race fix above, distinct from the one self-review already caught.**
+Its "Merge Risk" note: the identity guard (`editDraft !== draftAtStart`)
+only catches the lookup's *draft object* changing — switching cards,
+cancelling, or reopening the same card. It does nothing for the case where
+the form never closes and no other card opens at all: the reader keeps
+typing in the *same* still-open form's Reference or Verse text field while
+the lookup is still in flight. `editDraft` never changes identity in that
+case, so the guard waved the stale result straight through, silently
+overwriting whatever had just been typed with the lookup's own text.
+Reproduced directly: click Look up on a lowercase, unnormalised reference,
+type a manual correction into the verse text field before the (gated)
+lookup resolves, release it — the typed correction vanished, replaced by
+the looked-up wording, and the reference field silently renormalised too
+even though nothing about *which* draft was current had changed.
+
+Fixed by snapshotting the draft's *content*, not just its identity —
+`snapshotRef`/`snapshotText` captured alongside `draftAtStart`, and the
+result is now discarded unless both the identity and the content are still
+exactly what they were when the lookup started. Two new regression tests
+(reusing the same `Response.prototype.text` gating trick as the first
+race fix, now hoisted to a shared `installGatedLookup` fixture next to
+`installFakeRecognizer` rather than duplicated across both test blocks):
+one confirms an edit to the verse text field while a lookup is pending
+survives; the other confirms the reference field stays exactly as typed
+(not renormalised) for the same reason. Mutation-tested by reverting
+`stillFresh()` to the identity-only check: both new tests failed with the
+exact corruption CodeRabbit described (`expected "A manual correction
+typed while the lookup was still pending.", got "For God so loved the
+world..."`), confirming the content snapshot — not something else in the
+same diff — is what's carrying this half of the fix. Restored and
+confirmed 290/290 UI checks (404 total).
+
 ## 2026-08-28 — edit a verse's reference or text in place
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

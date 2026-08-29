@@ -768,6 +768,9 @@
   .card-edit textarea { font-family: var(--serif); min-height: 4.5rem; resize: vertical; line-height: 1.55; }
   .card-edit .err { color: var(--madder); font-size: .7rem; min-height: 1.1em; margin: 0; }
   .card-edit .actions { display: flex; gap: .5rem; align-items: center; position: relative; z-index: 1; }
+  .card-edit .reflookup { display: flex; gap: .5rem; align-items: stretch; position: relative; z-index: 1; }
+  .card-edit .reflookup input { flex: 1; min-width: 0; }
+  .card-edit .reflookup .btn { flex: none; white-space: nowrap; }
 
   /* ---------- add / io ---------- */
   details.add {

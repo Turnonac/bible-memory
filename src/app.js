@@ -632,12 +632,19 @@
     const refLabel = el("label");
     refLabel.htmlFor = "editRef";
     refLabel.textContent = "Reference";
+    const refRow = el("div", "reflookup");
     const refInput = document.createElement("input");
     refInput.id = "editRef";
     refInput.value = draft.ref;
     refInput.addEventListener("input", () => { editDraft.ref = refInput.value; });
+    const lookupBtn = el("button", "btn");
+    lookupBtn.type = "button";
+    lookupBtn.textContent = "Look up";
+    lookupBtn.hidden = !KJV_LOOKUP_SUPPORTED;
+    refRow.appendChild(refInput);
+    refRow.appendChild(lookupBtn);
     refField.appendChild(refLabel);
-    refField.appendChild(refInput);
+    refField.appendChild(refRow);
 
     const textField = el("div");
     const textLabel = el("label");
@@ -651,6 +658,56 @@
     textField.appendChild(textArea);
 
     const err = el("p", "err");
+
+    // Same re-fetch "Add a verse of your own" offers via its own Look up
+    // button (KJV_LOOKUP_SUPPORTED / lookupReference, defined below) — a
+    // typo in the reference shouldn't force retyping the verse text by hand
+    // too. Programmatic value assignment doesn't fire "input", so the draft
+    // needs the same explicit sync doLookup's own field assignment skips
+    // only because it writes straight to state, not a live draft.
+    async function doEditLookup() {
+      // Captured by identity, not by this card's id: cancelling and
+      // reopening the *same* card also swaps in a fresh editDraft object,
+      // and a lookup that started before that must still be told apart from
+      // one running against whatever draft is live now.
+      const draftAtStart = editDraft;
+      // Also snapshot its *content* — the form can stay open on the same
+      // card the whole time, with the reader typing further corrections
+      // into either field while the lookup is still in flight. A stale
+      // result must not clobber that either, even though editDraft itself
+      // never changed identity.
+      const snapshotRef = draftAtStart.ref;
+      const snapshotText = draftAtStart.text;
+      const stillFresh = () => editDraft === draftAtStart && draftAtStart.ref === snapshotRef && draftAtStart.text === snapshotText;
+      const raw = refInput.value.trim();
+      if (!raw) { err.textContent = "Give it a reference to look up."; refInput.focus(); return; }
+      lookupBtn.disabled = true;
+      const original = lookupBtn.textContent;
+      lookupBtn.textContent = "Looking up…";
+      err.textContent = "";
+      try {
+        const result = await lookupReference(raw);
+        // The user may have cancelled, saved, moved to editing a different
+        // card, or just kept typing in this same form while this was in
+        // flight. Applying a stale result now would silently overwrite
+        // whatever's actually there with this lookup's own text.
+        if (!stillFresh()) return;
+        if (result.error) { err.textContent = result.error; return; }
+        draftAtStart.ref = result.ref;
+        draftAtStart.text = result.text;
+        renderDeck();
+        $("editText").focus();
+      } catch (e) {
+        if (stillFresh()) err.textContent = "Couldn't look that up just now — try again.";
+      } finally {
+        lookupBtn.disabled = false;
+        lookupBtn.textContent = original;
+      }
+    }
+    lookupBtn.addEventListener("click", doEditLookup);
+    refInput.addEventListener("keydown", ev => {
+      if (ev.key === "Enter" && KJV_LOOKUP_SUPPORTED) { ev.preventDefault(); doEditLookup(); }
+    });
 
     const actions = el("div", "actions");
     const saveBtn = el("button", "btn primary");

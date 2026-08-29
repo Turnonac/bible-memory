@@ -39,6 +39,23 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] "Look up" in the edit form. The inline card-edit form (2026-08-28) can
+  now re-fetch the KJV text for a corrected reference exactly like "Add a
+  verse of your own" already could — a "Look up" button sits beside the
+  Reference field, filling in the exact 1769 wording so a reference typo
+  doesn't force retyping the verse text by hand too. Flagged as deliberately
+  deferred scope in that PR's own "Deliberately not done" section, and
+  **Now**/**Next** were both empty tonight, so it was the natural next slice
+  rather than proposing something unrelated. Self-review (`code-review`
+  skill) caught a real race before shipping: the lookup is async, and if the
+  user cancelled or switched to editing a different card before it resolved,
+  the original version wrote the stale result into whatever `editDraft`
+  currently pointed to — silently overwriting an unrelated card's in-progress
+  edit with this one's looked-up text. Fixed by capturing the draft object's
+  identity at the start of the lookup and discarding the result if that
+  identity has changed by the time it resolves (covers switching cards,
+  cancelling, and reopening the *same* card, which swaps in a fresh draft
+  object too). *(2026-08-29)*
 - [x] Edit a verse's reference or text in place. An "edit" control sits next
   to "remove" on every card; it swaps the card's reference/snippet for an
   inline form (Reference, Verse text, Save/Cancel) prefilled with the
