@@ -3,6 +3,113 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-28 — edit a verse's reference or text in place
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (359 checks: 1 build + 113 KJV + 245 UI),
+and `ROADMAP.md`'s **Now** and **Next** were both empty, so — per the
+working agreement — proposed my own item. The last four nights all worked
+the "searchable verse library" thread; this was a different gap in the same
+neighborhood — once a verse is in the deck, the only way to fix a typo in
+its reference or text was to delete it and re-add it, which throws away all
+attempt history, best score, and the SM-2 schedule over a misspelling.
+Given CLAUDE.md's "scripture is graded against, so it must be exact,"
+having no correction path for a self-inflicted typo felt like the sharper
+gap to close.
+
+An "edit" control sits next to "remove" in each card's stat row. Clicking
+it swaps that one card's reference/snippet/meter/remove display for an
+inline form — Reference input, Verse text textarea, Save/Cancel — prefilled
+with the card's current values, reusing the same visual language as the
+"Add a verse of your own" form (`.form` styling) rather than inventing a
+new one. Only one card edits at a time (`editingId`, module state like
+`deckQuery`/`deckFilter`/`deckSort`). Saving calls `saveVerseEdit()`, which
+updates `ref`/`text` on the *existing* verse object — same `id` — so
+`attempts`, `best`, `ease`, `reps`, `interval`, and `due` all survive
+untouched; only the delete-and-re-add path should cost a reader that
+progress. Validation matches the add form exactly: a non-empty reference,
+at least two words of text.
+
+Two deliberate calls, both recorded in `ROADMAP.md`'s Done entry: editing
+any verse — starter or custom — flips its `source` to `"custom"`, since a
+hand-edited verse can no longer claim to be the verified 1769 text
+`test/verify-kjv.mjs` checks the starter deck against; and editing the
+*active* verse resets `peeked`/`hideOrder` and clears the recite
+textarea/result panel, since those hold word indices into the *old* text
+that a changed word count would leave pointing at the wrong words (or past
+the end) — editing any other card leaves the active drill alone.
+
+Self-review (`code-review` skill) caught a real bug before shipping, fixed
+and mutation-tested (reverted, confirmed the new check fails, restored):
+**any unrelated action elsewhere on the page silently discarded an
+in-progress edit.** `renderDeck()` tears down and rebuilds every card's DOM
+on *any* change — a keystroke in the search box, a filter or sort change,
+grading a due verse, removing a different card — and the edit form was
+being rebuilt from the unchanged verse on disk rather than from what had
+actually been typed. Reproduced directly: type a draft correction, then a
+single character into the unrelated search box, and the draft vanished
+with no warning. Fixed with a live `editDraft` (`{ ref, text }`) kept in
+sync via `input` listeners on the form's own fields; `buildEditForm()` now
+seeds from that draft when one exists, so a rebuild triggered by anything
+else reflects what's actually been typed. `editDraft` clears alongside
+`editingId` on Save and Cancel.
+
+`npm test`: 1 build + 113 KJV + 268 UI (up from 245, 23 new checks) — 382
+total. New checks cover: the edit control's presence, correct prefill, the
+open/select overlay withdrawn while a card is mid-edit (so form clicks
+don't navigate away), only one form open at a time and switching which
+card is being edited, the empty-reference and under-two-words rejections
+with the form staying open, a valid save updating the card and closing the
+form, attempts/best/interval/due/source all surviving a save unchanged,
+the draft-survives-an-unrelated-rerender fix above, and the active-verse
+veil-state reset (word count changes, no stale `peeked` entries, no page
+error). Mutation-tested five behaviors individually — reverting the
+`source` flip, the active-verse veil reset, the editing-card render branch
+entirely, the form's validation, and the draft-preservation fix — each
+failed the corresponding new check (two of them hard-crashed the test with
+a timeout rather than silently passing, which is arguably an even stronger
+signal); restored and confirmed 382/382 again each time.
+
+Verified in the harness (real Chromium) in both themes and at 390px: the
+edit form renders cleanly at all three, Save/Cancel sit where the add
+form's actions already do, and the whole click-through (open the form,
+reject an invalid save twice, save a valid correction, watch the card
+update) works end to end via a standalone script before formalizing it as
+test coverage.
+
+Republished the Artifact in place with this run's `index.html`.
+
+**Addendum, same night — CodeRabbit's PR review found one more real bug,
+same shape as the self-review catch above but on a different code path.**
+`saveVerseEdit()` reset the recite textarea/result panel for the active
+verse but never stopped an in-progress "Speak it" session. A listener left
+running would keep listening against the verse just rewritten; its
+eventual `onend` hands the stale transcript (spoken against the *old*
+text) to `runCheck()`, which grades it via `active()` — the same, now-
+mutated verse object — against the *new* text. Exactly the class of bug
+already fixed once for `removeVerse()`/`selectVerse()` on 2026-08-17
+("a stale listener's transcript lands on whatever verse becomes active
+next"), just reached through a path that mutates the verse in place rather
+than replacing the active one. Caught it independently from CodeRabbit's
+summary-level "Merge Risk" note before its inline comment with the same
+diagnosis and proposed fix arrived a few minutes later. Fixed with
+`endListening(false)` + `setSpeakStatus("", false)`, matching the existing
+pattern exactly. New regression test starts a fake "Speak it" session,
+edits the active verse mid-listen, and asserts the stale transcript is
+discarded rather than graded — mutation-tested by reverting the fix: the
+unfixed code doesn't just mis-grade, it hangs (the listener never stops,
+so the button never reverts from "Stop listening" and the test's own wait
+times out) — a stronger signal than a value mismatch would have been.
+`npm test`: 383 total (270 UI, up from 268). Replied on the review thread
+with the fix commit and resolved it. CodeRabbit's other finding — a
+"Docstring Coverage" pre-merge check below its 80% threshold — wasn't a
+threaded comment and isn't one to act on: this codebase deliberately
+writes no docstrings (`CLAUDE.md`'s "default to writing no comments"),
+and none of the existing 1,479 lines of `src/app.js` carry any either;
+adding them only to this diff's five touched functions would make it the
+inconsistent one. Republished the Artifact again with the fixed
+`index.html`.
+
 ## 2026-08-27 — filter the deck by status
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

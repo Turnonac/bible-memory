@@ -1076,6 +1076,38 @@ const installFakeRecognizer = () => {
 }
 
 {
+  // Same class of bug as removing the recited verse mid-listen, but here the
+  // verse object itself survives — editing it in place must still stop the
+  // listener, or its eventual onend hands runCheck() a transcript spoken
+  // against the *old* text to grade against the *newly edited* one via
+  // active(), scoring (and potentially scheduling) a recitation the reader
+  // never actually made against that text.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Genesis 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "some words spoken before the edit");
+
+  await page.click(".cards .card.active .stat .edit");
+  await page.fill("#editText", "A brand new verse text after editing.");
+  await page.click(".card-edit .actions button[type=submit]");
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+
+  const attemptsOf2 = () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Genesis 1:1")?.attempts);
+  eq("editing the active verse mid-listen discards the stale transcript instead of grading it",
+    await attemptsOf2(), 0);
+  check("no bogus grade is shown for a transcript spoken against the pre-edit text",
+    await page.isHidden("#result"));
+  await ctx.close();
+}
+
+{
   // Every recognition event overwrites the recall box with the transcript so
   // far; read-only while listening stops that from silently discarding a
   // manual edit typed into the same field mid-session.
@@ -1964,6 +1996,126 @@ const installFakeRecognizer = () => {
       !(await page.$(card("Custom 3:1"))));
     check("every card shown for an active query has at least one highlight inside it",
       await page.$$eval(".card", cards => cards.every(c => c.querySelector("mark.hit") !== null)));
+
+    await ctx.close();
+  }
+
+  /* --- editing a deck card's reference or text in place --- */
+  {
+    const EDIT = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN,
+                attempts: 3, best: 87, last: "2026-01-01",
+                recent: [80, 90, 87], ease: 2.6, reps: 3, interval: 12, due: "2099-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(EDIT);
+    const card = ref => `.card:has(.ref .open:text-is("${ref}"))`;
+
+    check("each card offers an edit control alongside remove",
+      await page.isVisible(`${card("Genesis 1:1")} .stat .edit`));
+
+    await page.click(`${card("Genesis 1:1")} .stat .edit`);
+    eq("the reference field is prefilled with the card's current reference",
+      await page.inputValue("#editRef"), "Genesis 1:1");
+    eq("the text field is prefilled with the card's current text",
+      await page.inputValue("#editText"), GEN);
+    check("the open/select control is withdrawn while editing, so form clicks don't navigate away",
+      !(await page.$(".cards .card.editing .ref .open")));
+
+    // Only one card's form is open at a time — clicking a different card's
+    // edit button swaps which one, rather than opening a second form.
+    await page.click(`${card("Psalm 46:1")} .stat .edit`);
+    eq("only one edit form is open at a time", await page.$$eval(".card-edit", ns => ns.length), 1);
+    eq("switching cards shows the newly-clicked card's own fields",
+      await page.inputValue("#editRef"), "Psalm 46:1");
+
+    // An unrelated action elsewhere on the page (search, filter, sort, a
+    // grade, removing a different card) calls renderDeck(), which tears
+    // down and rebuilds every card — including the open edit form. It must
+    // rebuild from what's been typed, not from the unchanged verse on disk,
+    // or a keystroke in the search box silently erases an in-progress edit.
+    await page.fill("#editText", "A draft correction not yet saved.");
+    await page.fill("#deckSearch", "a");
+    eq("an in-progress draft survives an unrelated deck re-render",
+      await page.inputValue("#editText"), "A draft correction not yet saved.");
+    await page.fill("#deckSearch", "");
+
+    // Cancel discards, doesn't touch the verse.
+    await page.click(".card-edit .actions button.quiet");
+    check("cancel closes the form without changing the card", !(await page.$(".card-edit")));
+    eq("cancel leaves the reference untouched",
+      await page.textContent(`${card("Psalm 46:1")} .ref .open`), "Psalm 46:1");
+
+    // Empty reference is rejected.
+    await page.click(`${card("Genesis 1:1")} .stat .edit`);
+    await page.fill("#editRef", "");
+    await page.click(".card-edit .actions button[type=submit]");
+    check("an empty reference is rejected with an inline error",
+      (await page.textContent(".card-edit .err")).length > 0);
+    check("the form stays open after a rejected save", !!(await page.$(".card-edit")));
+
+    // Fewer than two words is rejected.
+    await page.fill("#editRef", "Genesis 1:1");
+    await page.fill("#editText", "one");
+    await page.click(".card-edit .actions button[type=submit]");
+    check("verse text under two words is rejected with an inline error",
+      (await page.textContent(".card-edit .err")).length > 0);
+
+    // A valid save updates the card and closes the form.
+    await page.fill("#editText", "In the beginning God made everything good and very fine.");
+    await page.click(".card-edit .actions button[type=submit]");
+    check("a valid save closes the edit form", !(await page.$(".card-edit")));
+    eq("the card's snippet reflects the corrected text",
+      await page.textContent(`${card("Genesis 1:1")} .snippet`),
+      "In the beginning God made everything good and very fine.");
+
+    // Fixing a typo shouldn't cost the reader the progress they've already
+    // made on the verse — only the delete-and-re-add path should do that.
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Genesis 1:1"));
+    eq("editing a verse's text does not reset its attempt count", saved.attempts, 3);
+    eq("editing a verse's text does not reset its best score", saved.best, 87);
+    eq("editing a verse's text does not reset its SM-2 interval", saved.interval, 12);
+    eq("editing a verse's text does not reset its due date", saved.due, "2099-01-01");
+    eq("editing a starter (kjv-sourced) verse marks it custom, since it can no longer claim to be the verified text",
+      saved.source, "custom");
+
+    await ctx.close();
+  }
+
+  /* --- editing the active verse resets stale veil state instead of corrupting it --- */
+  {
+    const EDIT_ACTIVE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page, errors } = await withState(EDIT_ACTIVE);
+    await page.click('button[data-mode="veil"]');
+    await page.click(".tok.blank");
+    check("a word is peeked before editing", (await page.$$(".tok.peeked")).length === 1);
+
+    await page.click(".cards .card .stat .edit");
+    // A shorter replacement changes the word count, so any leftover peeked/
+    // hidden indices from the old text would point at the wrong words, or
+    // past the end of the new one.
+    await page.fill("#editText", "Short new text.");
+    await page.click(".card-edit .actions button[type=submit]");
+
+    eq("the veiled verse re-renders at the new word count",
+      await page.$$eval("#verse .tok", ns => ns.length), 3);
+    eq("peeked words reset rather than pointing at the wrong word in the new text",
+      (await page.$$(".tok.peeked")).length, 0);
+    check("editing the active verse's text raises no page error from stale word indices",
+      errors.length === 0, errors.join(" | "));
 
     await ctx.close();
   }

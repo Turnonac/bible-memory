@@ -64,6 +64,12 @@
   let deckQuery = "";          // deck search box, filters the card grid only
   let deckFilter = "all";      // deck filter select, narrows the card grid only
   let deckSort = "added";      // deck sort select, orders the card grid only
+  let editingId = null;        // id of the card currently showing its edit form, if any
+  let editDraft = null;        // { ref, text } typed into that form, kept live so an unrelated
+                                // renderDeck() (search, filter, sort, grading, removing another
+                                // card) rebuilds the form from what's been typed, not from the
+                                // unchanged verse on disk — otherwise the rebuild silently
+                                // discards whatever the reader was mid-typing
 
   function blankVerse(ref, text, source) {
     return {
@@ -585,6 +591,99 @@
     return list;
   }
 
+  // Saving a correction updates the verse in place — same id, so the SM-2
+  // schedule, attempt history, and streak all survive a fixed typo rather
+  // than the delete-and-re-add path forcing a reader to lose that progress
+  // over a misspelling. A hand-edited verse can no longer claim to be the
+  // verified 1769 text test/verify-kjv.mjs checks the starter deck against,
+  // so editing any verse — starter or custom — marks it "custom".
+  function saveVerseEdit(id, ref, text) {
+    const v = state.verses.find(x => x.id === id);
+    if (!v) return;
+    v.ref = ref;
+    v.text = text;
+    v.source = "custom";
+    editingId = null;
+    editDraft = null;
+    // peeked/hideOrder hold word indices into the *old* text; a changed word
+    // count would leave them pointing at the wrong words, or past the end.
+    if (v.id === active().id) {
+      // A "Speak it" session left running would keep listening against the
+      // verse we just rewrote — its eventual transcript (spoken against the
+      // *old* text) would grade via runCheck()'s `active()` lookup against
+      // the *new* one, same class of bug selectVerse()/removeVerse() already
+      // guard against for exactly this reason.
+      endListening(false);
+      setSpeakStatus("", false);
+      peeked = new Set();
+      hideOrder = [];
+      $("attempt").value = "";
+      $("result").hidden = true;
+    }
+    save();
+    renderAll();
+  }
+
+  function buildEditForm(v) {
+    const form = el("form", "card-edit");
+    const draft = editDraft || { ref: v.ref, text: v.text };
+
+    const refField = el("div");
+    const refLabel = el("label");
+    refLabel.htmlFor = "editRef";
+    refLabel.textContent = "Reference";
+    const refInput = document.createElement("input");
+    refInput.id = "editRef";
+    refInput.value = draft.ref;
+    refInput.addEventListener("input", () => { editDraft.ref = refInput.value; });
+    refField.appendChild(refLabel);
+    refField.appendChild(refInput);
+
+    const textField = el("div");
+    const textLabel = el("label");
+    textLabel.htmlFor = "editText";
+    textLabel.textContent = "Verse text";
+    const textArea = document.createElement("textarea");
+    textArea.id = "editText";
+    textArea.value = draft.text;
+    textArea.addEventListener("input", () => { editDraft.text = textArea.value; });
+    textField.appendChild(textLabel);
+    textField.appendChild(textArea);
+
+    const err = el("p", "err");
+
+    const actions = el("div", "actions");
+    const saveBtn = el("button", "btn primary");
+    saveBtn.type = "submit";
+    saveBtn.textContent = "Save";
+    const cancelBtn = el("button", "btn quiet");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", ev => {
+      ev.stopPropagation();
+      editingId = null;
+      editDraft = null;
+      renderDeck();
+    });
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+
+    form.appendChild(refField);
+    form.appendChild(textField);
+    form.appendChild(err);
+    form.appendChild(actions);
+    form.addEventListener("click", ev => ev.stopPropagation());
+    form.addEventListener("submit", ev => {
+      ev.preventDefault();
+      const ref = refInput.value.trim();
+      const text = textArea.value.trim();
+      if (!ref) { err.textContent = "Give it a reference so you can find it again."; refInput.focus(); return; }
+      if (tokens(text).length < 2) { err.textContent = "Needs at least a couple of words."; textArea.focus(); return; }
+      saveVerseEdit(v.id, ref, text);
+    });
+    return form;
+  }
+
   function renderDeck() {
     const cards = $("cards");
     cards.textContent = "";
@@ -601,6 +700,15 @@
       ? shown.length + " of " + state.verses.length + " shown" : "";
     shown.forEach(v => {
       const card = el("div", "card" + (v.id === active().id ? " active" : ""));
+
+      if (editingId === v.id) {
+        // No .open overlay while editing — it would swallow clicks meant for
+        // the form's own inputs and buttons.
+        card.classList.add("editing");
+        card.appendChild(buildEditForm(v));
+        cards.appendChild(card);
+        return;
+      }
 
       const ref = el("div", "ref");
       const open = el("button", "open");
@@ -641,6 +749,16 @@
       const stat = el("div", "stat");
       const left = el("span");
       left.textContent = v.attempts ? "best " + v.best + "% · " + v.attempts + "×" : "not yet recited";
+      const edit = el("button", "edit");
+      edit.type = "button";
+      edit.textContent = "edit";
+      edit.setAttribute("aria-label", "Edit " + v.ref);
+      edit.addEventListener("click", ev => {
+        ev.stopPropagation();
+        editingId = v.id;
+        editDraft = { ref: v.ref, text: v.text };
+        renderDeck();
+      });
       const drop = el("button", "drop");
       drop.type = "button";
       drop.textContent = "remove";
@@ -659,8 +777,11 @@
         }
         removeVerse(v.id);
       });
+      const statActions = el("span", "stat-actions");
+      statActions.appendChild(edit);
+      statActions.appendChild(drop);
       stat.appendChild(left);
-      stat.appendChild(drop);
+      stat.appendChild(statActions);
 
       card.appendChild(ref);
       card.appendChild(snip);

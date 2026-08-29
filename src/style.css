@@ -729,6 +729,8 @@
     letter-spacing: .04em;
     color: var(--ink-faint);
   }
+  .card .stat .stat-actions { display: flex; gap: .65rem; }
+  .card .stat .edit,
   .card .stat .drop {
     position: relative;
     z-index: 1;
@@ -737,8 +739,35 @@
     color: var(--ink-faint);
     cursor: pointer;
   }
+  .card .stat .edit:hover { color: var(--lapis); text-decoration: underline; }
   .card .stat .drop:hover { color: var(--madder); text-decoration: underline; }
   .card .stat .drop[data-armed="1"] { color: var(--madder); }
+
+  /* ---------- deck card edit form ---------- */
+  .card.editing { cursor: auto; }
+  .card-edit { display: flex; flex-direction: column; gap: .6rem; }
+  .card-edit label {
+    font-family: var(--mono);
+    font-size: .5625rem;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: .25rem;
+  }
+  .card-edit input, .card-edit textarea {
+    width: 100%;
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .45rem .6rem;
+    font-size: .875rem;
+    position: relative;
+    z-index: 1;
+  }
+  .card-edit textarea { font-family: var(--serif); min-height: 4.5rem; resize: vertical; line-height: 1.55; }
+  .card-edit .err { color: var(--madder); font-size: .7rem; min-height: 1.1em; margin: 0; }
+  .card-edit .actions { display: flex; gap: .5rem; align-items: center; position: relative; z-index: 1; }
 
   /* ---------- add / io ---------- */
   details.add {
