@@ -2119,6 +2119,169 @@ const installFakeRecognizer = () => {
 
     await ctx.close();
   }
+
+  /* --- the edit form offers the same KJV "Look up" the add form does --- */
+  {
+    const EDIT_LOOKUP = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN,
+                attempts: 3, best: 87, last: "2026-01-01",
+                recent: [80, 90, 87], ease: 2.6, reps: 3, interval: 12, due: "2099-01-01" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(EDIT_LOOKUP);
+
+    await page.click(".cards .card .stat .edit");
+    check("Look up is offered in the edit form where DecompressionStream exists",
+      await page.isVisible(".card-edit .reflookup .btn"));
+
+    const lookUp = async ref => {
+      await page.fill("#editRef", ref);
+      await page.click(".card-edit .reflookup .btn");
+      await page.waitForFunction(() => document.querySelector(".card-edit .reflookup .btn").textContent === "Look up");
+      return { err: await page.textContent(".card-edit .err"), text: await page.inputValue("#editText"), ref: await page.inputValue("#editRef") };
+    };
+
+    // Same wording the add form's own lookup test already proved round-trips
+    // the bundled KJV data intact — proof the edit form's copy of the flow
+    // reaches the same lookupReference(), not a second, divergent one.
+    const john316 = await lookUp("john 3:16");
+    eq("a lookup in the edit form fills the exact KJV wording", john316.text,
+      "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.");
+    eq("the reference is normalised to its canonical case", john316.ref, "John 3:16");
+
+    const badBook = await lookUp("Xylophon 1:1");
+    check("an unknown book names itself in the edit form's error too", badBook.err.includes("Xylophon"));
+    check("the form stays open after a failed lookup", !!(await page.$(".card-edit")));
+
+    // A looked-up result must survive an unrelated deck re-render the same
+    // way a typed draft already does (editDraft only syncs from "input"
+    // events, and a programmatic value assignment fires none).
+    await lookUp("Psalm 23:1");
+    await page.fill("#deckSearch", "a");
+    eq("a looked-up reference survives an unrelated deck re-render",
+      await page.inputValue("#editRef"), "Psalm 23:1");
+    check("looked-up text survives an unrelated deck re-render",
+      (await page.inputValue("#editText")).startsWith("The LORD is my shepherd"));
+    await page.fill("#deckSearch", "");
+
+    // Enter in the reference field should look up, not submit the
+    // half-corrected form — same override the add form's #newRef carries.
+    await page.fill("#editRef", "James 1:5");
+    await page.press("#editRef", "Enter");
+    await page.waitForFunction(() => document.querySelector(".card-edit .reflookup .btn").textContent === "Look up");
+    check("Enter in the edit form's reference field triggers a lookup, not a save",
+      (await page.inputValue("#editText")).startsWith("If any of you lack wisdom"));
+    check("the form is still open after Enter looked up rather than saved", !!(await page.$(".card-edit")));
+
+    // Saving a looked-up correction behaves exactly like a hand-typed one:
+    // the SM-2 schedule and attempt history survive, only ref/text/source change.
+    await page.click(".card-edit .actions button[type=submit]");
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.id === "vGenesis11"));
+    eq("a save after Look up stores the looked-up reference", saved.ref, "James 1:5");
+    check("a save after Look up stores the looked-up text",
+      saved.text.startsWith("If any of you lack wisdom"));
+    eq("a save after Look up still preserves the verse's attempt history", saved.attempts, 3);
+    eq("a save after Look up still marks the verse custom, like any edited verse", saved.source, "custom");
+
+    await ctx.close();
+  }
+
+  /* --- edit-form Look up is absent outright without DecompressionStream --- */
+  {
+    const EDIT_NO_LOOKUP = {
+      schema: 2,
+      verses: [verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+    const page = await ctx.newPage();
+    await page.addInitScript(() => { delete window.DecompressionStream; });
+    await page.goto(url);
+    await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), EDIT_NO_LOOKUP);
+    await page.reload();
+
+    await page.click(".cards .card .stat .edit");
+    check("Look up stays hidden in the edit form without DecompressionStream",
+      !(await page.isVisible(".card-edit .reflookup .btn")));
+
+    // With no lookup to trigger, Enter in the reference field should fall
+    // through to the form's own submit (a save), same as any other field.
+    await page.fill("#editText", "In the beginning God made something else entirely.");
+    await page.press("#editRef", "Enter");
+    check("Enter falls through to a normal save when lookup is unavailable", !(await page.$(".card-edit")));
+
+    await ctx.close();
+  }
+
+  /* --- a stale in-flight Look up must never corrupt a different card's edit draft --- */
+  {
+    // lookupReference() decompresses the whole bundled KJV on its first-ever
+    // call and caches the result (kjvIndex()'s kjvIndexPromise), so exactly
+    // one lookup per fresh page hits Response.prototype.text — gating that
+    // one call simulates "the user acted again before a lookup resolved"
+    // without needing to fake the decompression itself.
+    const installGatedLookup = () => {
+      const proto = Response.prototype;
+      const original = proto.text;
+      let gated = false;
+      window.__releaseLookup = null;
+      proto.text = function () {
+        if (gated) return original.call(this);
+        gated = true;
+        return new Promise(resolve => {
+          window.__releaseLookup = () => resolve(original.call(this));
+        });
+      };
+    };
+
+    const RACE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+    const page = await ctx.newPage();
+    await page.addInitScript(installGatedLookup);
+    await page.goto(url);
+    await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), RACE);
+    await page.reload();
+    const card = ref => `.card:has(.ref .open:text-is("${ref}"))`;
+
+    await page.click(`${card("Genesis 1:1")} .stat .edit`);
+    await page.fill("#editRef", "John 3:16");
+    await page.click(".card-edit .reflookup .btn"); // starts the gated lookup; hangs until released
+
+    // Abandon Genesis's edit before the lookup resolves, and start editing a
+    // different card — editDraft now belongs to Psalm 46:1, not Genesis.
+    await page.click(".card-edit .actions button.quiet");
+    await page.click(`${card("Psalm 46:1")} .stat .edit`);
+    eq("editing a different card while the stale lookup is still pending shows its own draft",
+      await page.inputValue("#editRef"), "Psalm 46:1");
+
+    // Let the stale Genesis lookup finish now that Psalm 46:1 is the one
+    // being edited. There's no direct signal for "the stale promise chain
+    // has finished applying or discarding its result," so give it a real
+    // wait comfortably past what the actual decompression takes.
+    await page.evaluate(() => window.__releaseLookup());
+    await page.waitForTimeout(500);
+
+    eq("a stale lookup from an abandoned card never overwrites the card now being edited",
+      await page.inputValue("#editRef"), "Psalm 46:1");
+    check("a stale lookup never overwrites the text field of the card now being edited",
+      (await page.inputValue("#editText")).startsWith("God is our refuge"));
+
+    await ctx.close();
+  }
 }
 
 /* ============================ layout and a11y =========================== */
