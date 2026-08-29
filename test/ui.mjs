@@ -912,6 +912,25 @@ const installFakeRecognizer = () => {
   window.SpeechRecognition = FakeRecognition;
 };
 
+// lookupReference() decompresses the whole bundled KJV on its first-ever
+// call and caches the result (kjvIndex()'s kjvIndexPromise), so exactly one
+// lookup per fresh page load ever hits Response.prototype.text — gating
+// that one call simulates "the user acted again before a lookup resolved"
+// without needing to fake the decompression itself.
+const installGatedLookup = () => {
+  const proto = Response.prototype;
+  const original = proto.text;
+  let gated = false;
+  window.__releaseLookup = null;
+  proto.text = function () {
+    if (gated) return original.call(this);
+    gated = true;
+    return new Promise(resolve => {
+      window.__releaseLookup = () => resolve(original.call(this));
+    });
+  };
+};
+
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
   const page = await ctx.newPage();
@@ -2221,25 +2240,6 @@ const installFakeRecognizer = () => {
 
   /* --- a stale in-flight Look up must never corrupt a different card's edit draft --- */
   {
-    // lookupReference() decompresses the whole bundled KJV on its first-ever
-    // call and caches the result (kjvIndex()'s kjvIndexPromise), so exactly
-    // one lookup per fresh page hits Response.prototype.text — gating that
-    // one call simulates "the user acted again before a lookup resolved"
-    // without needing to fake the decompression itself.
-    const installGatedLookup = () => {
-      const proto = Response.prototype;
-      const original = proto.text;
-      let gated = false;
-      window.__releaseLookup = null;
-      proto.text = function () {
-        if (gated) return original.call(this);
-        gated = true;
-        return new Promise(resolve => {
-          window.__releaseLookup = () => resolve(original.call(this));
-        });
-      };
-    };
-
     const RACE = {
       schema: 2,
       verses: [
@@ -2279,6 +2279,51 @@ const installFakeRecognizer = () => {
       await page.inputValue("#editRef"), "Psalm 46:1");
     check("a stale lookup never overwrites the text field of the card now being edited",
       (await page.inputValue("#editText")).startsWith("God is our refuge"));
+
+    await ctx.close();
+  }
+
+  /* --- a stale Look up must not clobber further typing in the same still-open form --- */
+  {
+    // Same gated-lookup trick as above, but this time the form itself never
+    // closes and no other card is opened — the reader just keeps typing in
+    // this same card's fields while the lookup they started is still
+    // pending, which the identity check alone (editDraft still === the
+    // draft it started with) would wave through.
+    const SAME_FORM_RACE = {
+      schema: 2,
+      verses: [verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" })],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+    const page = await ctx.newPage();
+    await page.addInitScript(installGatedLookup);
+    await page.goto(url);
+    await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), SAME_FORM_RACE);
+    await page.reload();
+
+    await page.click(".cards .card .stat .edit");
+    // Lower-case and unnormalised on purpose: if the stale result were
+    // applied, lookupReference() would replace this with the canonical
+    // "John 3:16" — so the reference field staying exactly as typed is
+    // itself proof the result was discarded, not just a side effect of it.
+    await page.fill("#editRef", "john 3:16");
+    await page.click(".card-edit .reflookup .btn"); // starts the gated lookup; hangs until released
+
+    // Keep typing in the still-open form while the lookup is pending —
+    // nothing about which card or which draft object changed.
+    await page.fill("#editText", "A manual correction typed while the lookup was still pending.");
+
+    await page.evaluate(() => window.__releaseLookup());
+    // No direct signal the stale promise chain has settled; see the note
+    // on the identical wait above.
+    await page.waitForTimeout(500);
+
+    eq("a stale lookup does not overwrite the reference field once the reader has kept typing",
+      await page.inputValue("#editRef"), "john 3:16");
+    eq("a stale lookup does not overwrite text typed in the same form while it was pending",
+      await page.inputValue("#editText"), "A manual correction typed while the lookup was still pending.");
 
     await ctx.close();
   }

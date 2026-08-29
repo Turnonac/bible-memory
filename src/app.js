@@ -671,6 +671,14 @@
       // and a lookup that started before that must still be told apart from
       // one running against whatever draft is live now.
       const draftAtStart = editDraft;
+      // Also snapshot its *content* — the form can stay open on the same
+      // card the whole time, with the reader typing further corrections
+      // into either field while the lookup is still in flight. A stale
+      // result must not clobber that either, even though editDraft itself
+      // never changed identity.
+      const snapshotRef = draftAtStart.ref;
+      const snapshotText = draftAtStart.text;
+      const stillFresh = () => editDraft === draftAtStart && draftAtStart.ref === snapshotRef && draftAtStart.text === snapshotText;
       const raw = refInput.value.trim();
       if (!raw) { err.textContent = "Give it a reference to look up."; refInput.focus(); return; }
       lookupBtn.disabled = true;
@@ -679,19 +687,18 @@
       err.textContent = "";
       try {
         const result = await lookupReference(raw);
-        // The user may have cancelled, saved, or moved to editing a
-        // different card while this was in flight. editDraft can already
-        // belong to something else by the time this resolves — applying a
-        // stale result to it would silently overwrite an unrelated card's
-        // in-progress edit with this one's looked-up text.
-        if (editDraft !== draftAtStart) return;
+        // The user may have cancelled, saved, moved to editing a different
+        // card, or just kept typing in this same form while this was in
+        // flight. Applying a stale result now would silently overwrite
+        // whatever's actually there with this lookup's own text.
+        if (!stillFresh()) return;
         if (result.error) { err.textContent = result.error; return; }
         draftAtStart.ref = result.ref;
         draftAtStart.text = result.text;
         renderDeck();
         $("editText").focus();
       } catch (e) {
-        if (editDraft === draftAtStart) err.textContent = "Couldn't look that up just now — try again.";
+        if (stillFresh()) err.textContent = "Couldn't look that up just now — try again.";
       } finally {
         lookupBtn.disabled = false;
         lookupBtn.textContent = original;

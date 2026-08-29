@@ -81,6 +81,39 @@ contrast readable against `--sunken`.
 
 Republished the Artifact in place with this run's `index.html`.
 
+**Addendum, same night — CodeRabbit's PR review found one more real gap in
+the race fix above, distinct from the one self-review already caught.**
+Its "Merge Risk" note: the identity guard (`editDraft !== draftAtStart`)
+only catches the lookup's *draft object* changing — switching cards,
+cancelling, or reopening the same card. It does nothing for the case where
+the form never closes and no other card opens at all: the reader keeps
+typing in the *same* still-open form's Reference or Verse text field while
+the lookup is still in flight. `editDraft` never changes identity in that
+case, so the guard waved the stale result straight through, silently
+overwriting whatever had just been typed with the lookup's own text.
+Reproduced directly: click Look up on a lowercase, unnormalised reference,
+type a manual correction into the verse text field before the (gated)
+lookup resolves, release it — the typed correction vanished, replaced by
+the looked-up wording, and the reference field silently renormalised too
+even though nothing about *which* draft was current had changed.
+
+Fixed by snapshotting the draft's *content*, not just its identity —
+`snapshotRef`/`snapshotText` captured alongside `draftAtStart`, and the
+result is now discarded unless both the identity and the content are still
+exactly what they were when the lookup started. Two new regression tests
+(reusing the same `Response.prototype.text` gating trick as the first
+race fix, now hoisted to a shared `installGatedLookup` fixture next to
+`installFakeRecognizer` rather than duplicated across both test blocks):
+one confirms an edit to the verse text field while a lookup is pending
+survives; the other confirms the reference field stays exactly as typed
+(not renormalised) for the same reason. Mutation-tested by reverting
+`stillFresh()` to the identity-only check: both new tests failed with the
+exact corruption CodeRabbit described (`expected "A manual correction
+typed while the lookup was still pending.", got "For God so loved the
+world..."`), confirming the content snapshot — not something else in the
+same diff — is what's carrying this half of the fix. Restored and
+confirmed 290/290 UI checks (404 total).
+
 ## 2026-08-28 — edit a verse's reference or text in place
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned
