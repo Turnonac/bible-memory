@@ -3,6 +3,91 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-30 — a keyboard shortcuts help panel
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (404 checks: 1 build + 113 KJV + 290 UI),
+and `ROADMAP.md`'s **Now** and **Next** were both empty, so — per the
+working agreement — proposed my own item rather than restart the
+searchable-library thread again. Reading `src/app.js`'s global `keydown`
+handler turned up a surprising gap: the page has bound real shortcuts for
+a while now — `1`–`4` to switch modes, arrow keys to step between verses,
+`[`/`]` to change the veil level, Ctrl/Cmd+Enter to check recall — but
+nothing in the UI ever says so, and `grep` for "shortcut"/"help"/"kbd" in
+`src/markup.html` came back empty. A feature nobody can discover is close
+to not existing; closing that gap felt like a better use of the night than
+inventing new drill mechanics.
+
+A "Keyboard shortcuts" disclosure now sits under the practice hint,
+reusing the exact `<details>` visual language "Add a verse of your own"
+already established (same border/background/`+`-to-`−` marker convention)
+rather than introducing a new one. Pressing `?` toggles it open and moves
+focus into it, matching how every other bare-key shortcut on this page
+already behaves; `?` sits behind the same input-field guard the mode keys
+and arrow keys already use, so typing a literal question mark into a
+reference, a search box, or a recited verse stays ordinary text.
+
+**Self-review (`code-review` skill) caught a real bug before shipping.**
+The panel's key caps needed a `kbd` style, and the first version added a
+second bare `kbd { ... }` rule near the bottom of the stylesheet. The page
+already had one, used by the practice hint's own inline "1"/"4"/arrow-key
+text — same selector, same specificity, and mine came later in the
+cascade, so it silently won for *every* `<kbd>` on the page, not just the
+new panel's. Confirmed via computed styles in the harness: the hint bar's
+kbd picked up the new rule's padding, background fill, and border changes
+wholesale, none of it intended. Fixed by deleting the duplicate entirely —
+the panel just reuses the one kbd style already on the page, which reads
+better anyway: the same real key renders identically wherever it appears.
+Mutation-tested by restoring the duplicate rule and re-reading the hint
+bar's computed style: it came back visibly different from the unmutated
+page, confirming the deletion is what's carrying the fix rather than
+something else in the diff.
+
+**Also surfaced a pre-existing test fragility, unrelated to this feature's
+own logic, that this diff happened to trip.** Adding a new element above
+`.deck` shifted every element below it down the page by a few dozen
+pixels, which broke `the sheet is framed along its bottom edge` in the
+deck-frame pixel test. Not a rendering bug — `.cards::after`'s frame was
+still painting correctly. The test itself was fragile: it fed `.cards`'
+fractional `getBoundingClientRect()` straight into a `page.screenshot`
+`clip`, and flooring the box's `y` and its `height` independently can
+under-cover the true fractional box by just less than a whole pixel on
+each side — enough, at the exact fractional offset this change happened
+to produce, to crop the bottom hairline out of the screenshot before any
+pixel was ever sampled. Confirmed by comparing a full-page screenshot
+against the clipped one: the rule-coloured row was present in the former,
+outside the latter's bounds entirely. Fixed the crop math (round the box
+outward — floor the start, ceil the end — then sample a 1px window inward
+from each nominal edge, the same tolerance the seam checks already use for
+the same subpixel-rounding reason) rather than touching what the check
+asserts. Mutation-tested by reverting `.cards::after` entirely: all four
+edge checks still fail exactly as before, confirming the crop-math fix
+didn't quietly widen what the test tolerates — a real missing frame still
+gets caught.
+
+Twelve new checks in `test/ui.mjs`: the panel starts closed with its list
+hidden, `?` opens it and moves focus in, the panel actually documents each
+of the four real shortcuts (checked against literal, not loosely-matched,
+text — an early loose regex version passed even with a whole shortcut's
+line deleted, because "Veil" and "Recite" both also appear in the
+mode-switch line; tightened to check for the literal phrases and the `[`/
+`]` characters themselves, then mutation-tested each of the four lines
+individually to confirm each has its own dedicated, load-bearing check),
+`?` closes it again, typing `?` into a focused field leaves it alone
+(mutation-tested by moving the new branch ahead of the existing input
+guard — confirmed the check catches exactly that regression), and the
+panel is excluded from the printed worksheet like the rest of the app
+chrome (also mutation-tested). `npm test`: 1 build + 113 KJV + 302 UI (up
+from 290, 12 new checks) — 416 total.
+
+Verified in the harness (real Chromium) in both themes and at 390px: the
+panel's rows wrap onto a second line cleanly at the narrow width without
+breaking the `<dl>` layout, kbd caps stay legible against `--sunken` in
+dark mode, and the panel disappears correctly under `@media print`.
+
+Pushed the branch (`claude/2026-08-30-keyboard-shortcuts-help`) and opened
+a PR. Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-08-29 — merge the edit-in-place PR, then "Look up" in the edit form
 
 Found PR #16 open from the previous run ("Edit a verse's reference or text
