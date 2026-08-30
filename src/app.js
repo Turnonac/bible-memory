@@ -1650,6 +1650,12 @@
       veil = VEIL_STEPS[Math.min(VEIL_STEPS.length - 1, Math.max(0, i + (e.key === "]" ? 1 : -1)))];
       renderStage();
     }
+    if (e.key === "?") {
+      e.preventDefault();
+      const panel = $("shortcuts");
+      panel.open = !panel.open;
+      if (panel.open) panel.querySelector("summary").focus();
+    }
   });
 
   renderVeilSeg();

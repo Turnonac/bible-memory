@@ -165,6 +165,7 @@ for (const scheme of ["light", "dark"]) {
       deck: d(".deck"),
       masthead: d(".masthead"),
       hint: d(".hint"),
+      shortcuts: d(".shortcuts"),
       verse: d(".verse"),
       reference: document.querySelector("#ref").textContent,
       veiledBorder: veiled ? getComputedStyle(veiled).borderBottomWidth : null,
@@ -174,6 +175,7 @@ for (const scheme of ["light", "dark"]) {
   check("print media hides the deck", printed.deck === "none");
   check("print media hides the masthead", printed.masthead === "none");
   check("print media hides the mode hint", printed.hint === "none");
+  check("print media hides the shortcuts panel", printed.shortcuts === "none");
   check("print media keeps the verse box visible", printed.verse !== "none");
   check("print media keeps the reference heading", printed.reference.length > 0);
   check("print media draws a fill-in line under hidden words",
@@ -1549,13 +1551,32 @@ const installGatedLookup = () => {
     // same way, so it stays correct regardless of what pushes .cards up or
     // down the page; fullPage keeps the clip valid even where .cards runs
     // past the viewport's own height, as a wider deck does at this width.
+    //
+    // clip itself still needs whole-pixel bounds, and rounding sheetX/Y/W/H
+    // independently can shrink the box below its true fractional size —
+    // whatever sits above .cards on the page (a banner, an extra disclosure)
+    // shifts its fractional Y, and a floor()'d start plus a floor()'d height
+    // can together truncate the last row entirely, cropping the bottom
+    // hairline out of the image before any pixel is even sampled. Round the
+    // start outward (floor) and the end outward (ceil) instead, so the crop
+    // always contains the whole fractional box — at the cost of up to ~1px
+    // of surrounding page on each side, which the edge sampling below
+    // tolerates the same way the seam sampling already does.
+    const x0 = Math.floor(geom.sheetX), y0 = Math.floor(geom.sheetY);
+    const x1 = Math.ceil(geom.sheetX + geom.sheetW), y1 = Math.ceil(geom.sheetY + geom.sheetH);
     const sheetPng = readPng(await page.screenshot({
       fullPage: true,
-      clip: { x: geom.sheetX, y: geom.sheetY, width: geom.sheetW, height: geom.sheetH }
+      clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
     }));
+    // Sample points below are computed relative to .cards' own fractional
+    // origin (geom.sheetX/Y), not the outward-rounded crop origin above —
+    // shift by the gap between them so a sample meant for, say, the seam
+    // between two cards still lands on that seam inside the (slightly
+    // larger) cropped image.
+    const offX = geom.sheetX - x0, offY = geom.sheetY - y0;
     const px = (x, y) => sheetPng.at(
-      Math.max(0, Math.min(sheetPng.width - 1, Math.round(x))),
-      Math.max(0, Math.min(sheetPng.height - 1, Math.round(y))));
+      Math.max(0, Math.min(sheetPng.width - 1, Math.round(x + offX))),
+      Math.max(0, Math.min(sheetPng.height - 1, Math.round(y + offY))));
 
     // The bug: this pixel used to be --rule, a flat grey slab filling the row.
     const empty = px(geom.emptyX, geom.emptyY);
@@ -1580,17 +1601,20 @@ const installGatedLookup = () => {
     // gap:0 it survived only across the blank trailing region and vanished
     // along the top and left — declared, and invisible.
     const along = (n, f) => Array.from({ length: n }, (_, i) => f(2 + i * (n > 1 ? 1 : 0), i / (n - 1)));
-    const edgeRuled = (label, pts) => {
-      const bad = pts.filter(([x, y]) => !near(px(x, y), RULE));
+    // Sample the boundary pixel or one pixel inward, not the boundary alone —
+    // the outward-rounded crop above can sit up to ~1px past .cards' true
+    // fractional edge on either side, same rationale as ruledWithin's window.
+    const edgeRuled = (label, pts, dx, dy) => {
+      const bad = pts.filter(([x, y]) => ![0, 1].some(k => near(px(x + dx * k, y + dy * k), RULE)));
       check(`the sheet is framed along its ${label} edge`, bad.length === 0,
-        `${bad.length}/${pts.length} pixels off-colour, first at ${bad[0]} = rgb(${bad[0] ? px(...bad[0]) : ""})`);
+        `${bad.length}/${pts.length} pixels off-colour, first at ${bad[0]}`);
     };
-    const W = sheetPng.width, H = sheetPng.height;
+    const SW = geom.sheetW, SH = geom.sheetH;
     const spread = (n, lo, hi) => Array.from({ length: n }, (_, i) => lo + (i * (hi - lo)) / (n - 1));
-    edgeRuled("top", spread(24, 4, W - 5).map(x => [x, 0]));
-    edgeRuled("bottom", spread(24, 4, W - 5).map(x => [x, H - 1]));
-    edgeRuled("left", spread(12, 4, H - 5).map(y => [0, y]));
-    edgeRuled("right", spread(12, 4, H - 5).map(y => [W - 1, y]));
+    edgeRuled("top", spread(24, 4, SW - 5).map(x => [x, 0]), 0, 1);
+    edgeRuled("bottom", spread(24, 4, SW - 5).map(x => [x, SH - 1]), 0, -1);
+    edgeRuled("left", spread(12, 4, SH - 5).map(y => [0, y]), 1, 0);
+    edgeRuled("right", spread(12, 4, SH - 5).map(y => [SW - 1, y]), -1, 0);
     await ctx.close();
   }
 
@@ -1612,6 +1636,43 @@ const installGatedLookup = () => {
     check("a single-verse deck spans the whole sheet",
       spans.sheet - spans.card <= 2,
       `sheet ${spans.sheet}px vs card ${spans.card}px`);
+    await ctx.close();
+  }
+
+  /* --- keyboard shortcuts panel: discoverable, and doesn't fight typing --- */
+  {
+    const { ctx, page } = await withState(null);
+    check("the shortcuts panel starts closed",
+      !(await page.locator("#shortcuts").evaluate(el => el.open)));
+    check("...and its list is hidden while closed",
+      !(await page.isVisible(".shortcuts-list")));
+
+    await page.keyboard.press("?");
+    check("pressing ? opens the panel",
+      await page.locator("#shortcuts").evaluate(el => el.open));
+    check("...and the list becomes visible", await page.isVisible(".shortcuts-list"));
+    check("opening it moves focus into the panel, for a screen reader to announce it",
+      await page.evaluate(() => document.activeElement.closest("#shortcuts") !== null));
+
+    // Every key this page actually binds should be named here — a shortcut
+    // nobody can find out about is as good as no shortcut at all.
+    const text = await page.textContent(".shortcuts-list");
+    check("it documents the mode-switch digits", text.includes("Read, Veil, Initials, Recite"));
+    check("it documents stepping between verses", /previous.*next.*verse/i.test(text));
+    check("it documents the veil brackets", text.includes("[") && text.includes("]") && /veil/i.test(text));
+    check("it documents checking recall", /check your recall/i.test(text));
+
+    await page.keyboard.press("?");
+    check("pressing ? again closes the panel",
+      !(await page.locator("#shortcuts").evaluate(el => el.open)));
+
+    // "?" is ordinary punctuation inside a text field (a real question, or
+    // part of a recited verse) and must not double as the panel toggle there
+    // — the same guard the 1–4 mode keys and the arrow keys already rely on.
+    await page.click("#deckSearch");
+    await page.keyboard.press("?");
+    check("typing ? into a focused field leaves the panel alone",
+      !(await page.locator("#shortcuts").evaluate(el => el.open)));
     await ctx.close();
   }
 

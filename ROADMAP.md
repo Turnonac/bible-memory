@@ -39,6 +39,46 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Keyboard shortcuts help panel. **Now** and **Next** were both empty
+  tonight; the page has bound real keyboard shortcuts since early on — 1–4
+  to switch modes, arrow keys to step between verses, `[`/`]` to change the
+  veil level in Veil mode, Ctrl/Cmd+Enter to check recall — but nothing on
+  the page ever told a reader they existed, and there was no way to
+  discover them short of reading the source. A "Keyboard shortcuts"
+  disclosure (reusing the same `<details>` visual language as "Add a verse
+  of your own") sits under the practice hint; pressing `?` toggles it open
+  and focuses it (for a screen reader to announce it), the same way the
+  page already handles every other bare-key shortcut. `?` joins the
+  existing input-field guard so it stays ordinary punctuation while typing
+  a reference, a search query, or a recited verse. Self-review
+  (`code-review` skill) caught a real bug before shipping: a new bare `kbd
+  { ... }` rule for the panel's key caps had the same specificity as, and
+  came later than, the page's pre-existing bare `kbd` rule (used by the
+  practice hint's own inline "1"/"4"/arrow hints) — it silently won the
+  cascade and reflowed every `<kbd>` on the page, not just the new panel's.
+  Fixed by deleting the duplicate and letting the panel reuse the one kbd
+  style already on the page, which is the more consistent look anyway:
+  the same keys now render identically in both places. Mutation-tested
+  by reverting the fix: computed styles on the hint bar's own kbd came
+  back visibly different (padding, border, background, color) with the
+  duplicate rule restored, confirming the fix is what's carrying it.
+  A deck-frame pixel test (`the sheet is framed along its bottom edge`)
+  broke as a side effect of adding content above `.cards` — not a bug in
+  this feature, but a pre-existing fragility in that test's own crop math:
+  it fed `.cards`' fractional `getBoundingClientRect()` straight into a
+  screenshot `clip`, and rounding that down independently on each axis
+  could truncate the crop by a whole row before any pixel was sampled,
+  cropping the bottom hairline out of the image entirely whenever
+  whatever sits above the deck changes height. Fixed the crop math itself
+  (round the box outward, not the two edges independently) rather than
+  touching what the check asserts; confirmed via mutation test that
+  removing `.cards::after` entirely still fails all four edge checks, so
+  the fix didn't quietly widen what the test tolerates. `npm test`: 1
+  build + 113 KJV + 302 UI (up from 290, 12 new checks) — 416 total.
+  Verified in the harness in both themes and at 390px: the panel wraps
+  cleanly at the narrow width, kbd caps stay legible in dark mode, and the
+  panel is excluded from the printable worksheet like the rest of the app
+  chrome. *(2026-08-30)*
 - [x] "Look up" in the edit form. The inline card-edit form (2026-08-28) can
   now re-fetch the KJV text for a corrected reference exactly like "Add a
   verse of your own" already could — a "Look up" button sits beside the
