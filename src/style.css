@@ -773,23 +773,23 @@
   .card-edit .reflookup .btn { flex: none; white-space: nowrap; }
 
   /* ---------- add / io ---------- */
-  details.add, details.shortcuts {
+  details.add, details.add-many, details.shortcuts {
     margin-top: 1.5rem;
     border: 1px solid var(--rule);
     border-radius: 3px;
     background: var(--raised);
   }
-  details.add > summary, details.shortcuts > summary {
+  details.add > summary, details.add-many > summary, details.shortcuts > summary {
     cursor: pointer;
     padding: .7rem 1rem;
     font-size: .8125rem;
     color: var(--ink-soft);
     list-style: none;
   }
-  details.add > summary::-webkit-details-marker, details.shortcuts > summary::-webkit-details-marker { display: none; }
-  details.add > summary::before, details.shortcuts > summary::before { content: "+ "; color: var(--madder); }
-  details.add[open] > summary::before, details.shortcuts[open] > summary::before { content: "\2212 "; }
-  details.add > summary:hover, details.shortcuts > summary:hover { color: var(--ink); }
+  details.add > summary::-webkit-details-marker, details.add-many > summary::-webkit-details-marker, details.shortcuts > summary::-webkit-details-marker { display: none; }
+  details.add > summary::before, details.add-many > summary::before, details.shortcuts > summary::before { content: "+ "; color: var(--madder); }
+  details.add[open] > summary::before, details.add-many[open] > summary::before, details.shortcuts[open] > summary::before { content: "\2212 "; }
+  details.add > summary:hover, details.add-many > summary:hover, details.shortcuts > summary:hover { color: var(--ink); }
   .form { padding: 0 1rem 1.1rem; display: flex; flex-direction: column; gap: .7rem; max-width: 40rem; }
   .form label {
     font-family: var(--mono);
@@ -813,6 +813,7 @@
   .form .reflookup input { flex: 1; min-width: 0; }
   .form .reflookup .btn { flex: none; white-space: nowrap; }
   .form .err { color: var(--madder); font-size: .75rem; min-height: 1.1em; margin: 0; }
+  .form .status { color: var(--ink-soft); font-size: .75rem; min-height: 1.1em; margin: 0; }
   .form .actions { display: flex; gap: .5rem; align-items: center; }
 
   .shortcuts-list {

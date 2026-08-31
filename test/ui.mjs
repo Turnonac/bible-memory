@@ -714,6 +714,90 @@ let sharedHash;
   await ctx.close();
 }
 
+/* ======================== add several verses at once ===================== */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", e => errors.push(String(e)));
+  await page.goto(url);
+  await page.click("details.add-many > summary");
+
+  check("Add several at once is offered where DecompressionStream exists",
+    await page.isVisible("#addManyForm"));
+
+  const cardsBefore = await page.$$eval(".card", n => n.length);
+
+  // "John 3:16" and "Romans 8:28" are already in the 28-verse starter deck;
+  // "Titus 2:11" is not. One bad reference and one blank line are mixed in
+  // to prove a batch's failures don't block its successes.
+  await page.fill("#manyRefs", "John 3:16\ntitus 2:11\n\nXylophon 1:1\nRomans 8:28");
+  await page.click("#addManyBtn");
+  await page.waitForFunction(() => document.getElementById("addManyBtn").textContent === "Look up and add");
+
+  eq("exactly the one genuinely new reference was added",
+    await page.$$eval(".card", n => n.length), cardsBefore + 1);
+  check("the new reference's card appears in the deck, normalised to title case",
+    (await page.locator(".card").filter({ hasText: "Titus 2:11" }).count()) === 1);
+
+  const status = await page.textContent("#addManyStatus");
+  check("the status line reports one added", status.includes("1 verse added"));
+  check("the status line reports the two already-owned duplicates", status.includes("2 already in your deck"));
+  check("the status line reports the one unresolved reference", status.includes("1 reference not found"));
+
+  check("the unresolved reference names itself in the error line",
+    (await page.textContent("#addManyErr")).includes("Xylophon"));
+  eq("only the unresolved reference is left in the textarea for correction",
+    await page.inputValue("#manyRefs"), "Xylophon 1:1");
+
+  // A batch of entirely-known references should clear the textarea outright.
+  await page.fill("#manyRefs", "Psalm 100:1, Psalm 100:2");
+  await page.click("#addManyBtn");
+  await page.waitForFunction(() => document.getElementById("addManyBtn").textContent === "Look up and add");
+  eq("comma-separated references on one line are read as separate entries",
+    await page.$$eval(".card", n => n.length), cardsBefore + 3);
+  eq("a fully-resolved batch clears the textarea", await page.inputValue("#manyRefs"), "");
+
+  // A reference repeated within the same pasted batch must not be added twice.
+  const beforeDup = await page.$$eval(".card", n => n.length);
+  await page.fill("#manyRefs", "Titus 1:1\nTitus 1:1");
+  await page.click("#addManyBtn");
+  await page.waitForFunction(() => document.getElementById("addManyBtn").textContent === "Look up and add");
+  eq("a reference repeated within one pasted batch is added only once",
+    await page.$$eval(".card", n => n.length), beforeDup + 1);
+  check("the repeat within the batch counts as a duplicate in the status line",
+    (await page.textContent("#addManyStatus")).includes("1 already in your deck"));
+
+  await page.fill("#manyRefs", "   \n  ");
+  await page.click("#addManyBtn");
+  check("submitting only blank lines asks for a reference",
+    (await page.textContent("#addManyErr")).length > 5);
+
+  const tooMany = Array.from({ length: 51 }, (_, i) => "Psalm " + (i + 1) + ":1").join("\n");
+  const beforeCap = await page.$$eval(".card", n => n.length);
+  await page.fill("#manyRefs", tooMany);
+  await page.click("#addManyBtn");
+  check("a batch past the cap is rejected before looking anything up",
+    (await page.textContent("#addManyErr")).length > 5);
+  eq("nothing from a rejected over-cap batch reaches the deck",
+    await page.$$eval(".card", n => n.length), beforeCap);
+
+  check("adding several verses raised no page errors", errors.length === 0, errors.join(" | "));
+  await ctx.close();
+}
+
+/* ================== add several at once absent without the API =========== */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => { delete window.DecompressionStream; });
+  await page.goto(url);
+
+  check("Add several at once stays hidden without DecompressionStream",
+    !(await page.isVisible("details.add-many")));
+  await ctx.close();
+}
+
 /* ============================ export capability ========================== */
 {
   // The published Artifact sandbox blocks `<a download>` entirely, so a real

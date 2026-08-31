@@ -3,6 +3,80 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-08-31 — add several verses at once by reference
+
+No open PRs from previous runs, `main` was green (416 total: 1 build + 113
+KJV + 302 UI), and `ROADMAP.md`'s **Now** and **Next** were both empty
+again, so proposed my own item per the working agreement. The existing
+"Add any verse by reference" lookup (2026-08-18) and its "Look up" button
+in the edit form (2026-08-29) both handle exactly one reference per round
+trip; the roadmap's own stated direction ("a searchable verse library")
+implies decks that grow past a handful of verses, and building one that
+way currently means opening the disclosure, typing a reference, clicking
+Look up, clicking Add, and repeating — for every verse in, say, a reading
+plan or topical list.
+
+A second "Add several at once" disclosure now sits beside "Add a verse of
+your own" (hidden outright without `DecompressionStream`, same
+feature-detection gate as the lookup it depends on). It takes a
+newline- or comma-separated textarea of references, looks each one up
+against the bundled KJV via the same `lookupReference()` both existing
+lookup paths already share, and adds every one that resolves — a
+reference already in the deck, or repeated within the same paste, is
+skipped rather than duplicated (both dedupe against one case-insensitive
+`existingRefSet()` helper, factored out during self-review from three
+near-identical `new Set(state.verses.map(...))` call sites — deck sharing
+had two of its own already). A status line reports what happened ("3
+verses added, 1 already in your deck, 1 reference not found"); on any
+failures the textarea is left holding just the unresolved lines (not the
+ones that already went through) so a typo can be fixed and resubmitted
+without retyping the rest. Capped at 50 references per batch
+(`ADD_MANY_MAX`) so one runaway paste can't queue an unbounded run of
+sequential lookups.
+
+Reused the exact same `details`/`.form` visual language "Add a verse of
+your own" already established, but under its own `add-many` class rather
+than sharing `add` — the existing test suite's `details.add > summary`
+selector, used across six pre-existing tests, would otherwise match two
+elements the moment this panel exists and stopped being `hidden`, and
+Playwright's strict mode rejects an ambiguous selector rather than
+guessing. Extended the shared CSS rule (`details.add, details.add-many,
+details.shortcuts { ... }`) so the new class picks up the identical
+border/background/+-to-−-marker treatment without duplicating it.
+
+**Self-review (`code-review` skill) caught a real duplication before
+shipping**, not a bug: `existing = new Set(state.verses.map(v =>
+v.ref.toLowerCase()))` had been copy-pasted a third time for this feature,
+after deck sharing (2026-08-19) already carried two copies of the exact
+same line. Left to drift, a future change to the dedup rule (trimming
+punctuation, say) landing in the share-import path but missed here would
+leave "is this verse already in my deck" silently disagreeing between the
+two features. Factored all three into `existingRefSet()`.
+
+Seventeen new checks in `test/ui.mjs`: the panel is absent without
+`DecompressionStream`; a mixed batch (one new reference, two already in
+the starter deck, one unresolved, one blank line) adds exactly the new
+one and reports all three outcomes correctly; comma-separated references
+on one line are read as separate entries; a reference repeated twice
+within one paste is added only once; an all-blank submission is rejected;
+and a batch past `ADD_MANY_MAX` is rejected before any lookup runs at all.
+Mutation-tested three of the load-bearing pieces by reverting each in
+turn and confirming the right tests fail: removing the dedup check (6
+failures — duplicates sail through as new adds), removing the cap check
+(2 failures — an 82-reference batch is looked up in full), and always
+clearing the textarea instead of leaving unresolved lines behind (1
+failure). Restored and confirmed 319/319 after each. `npm test`: 1 build +
+113 KJV + 319 UI (up from 302, 17 new checks) — 433 total.
+
+Verified in the harness (real Chromium) in both themes and at 390px: the
+status and error lines stay legible against `--raised` in dark mode, the
+textarea and buttons wrap cleanly at the narrow width, and a mixed-result
+batch (screenshotted directly) reads clearly — one new card in the deck
+grid, the failed reference alone left in the textarea, and the summary
+line naming all three outcomes.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-08-30 — a keyboard shortcuts help panel
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned
