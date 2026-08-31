@@ -1017,6 +1017,47 @@ const installGatedLookup = () => {
   };
 };
 
+/* ============== add several at once: a deck change mid-batch ============= */
+{
+  // CodeRabbit flagged this before it shipped: the dedup check used to read
+  // the deck's membership once, before the loop's first await. If the deck
+  // changed while a lookup was still pending — someone adds the very
+  // reference this batch is about to add, through a completely different
+  // control — that stale snapshot would let the batch duplicate it anyway.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installGatedLookup);
+  await page.goto(url);
+  await page.click("details.add > summary");
+  await page.click("details.add-many > summary");
+
+  await page.fill("#manyRefs", "Titus 3:1");
+  await page.click("#addManyBtn"); // starts the gated lookup; hangs until released
+
+  check("the textarea and Clear are locked while a batch is in flight",
+    (await page.isDisabled("#manyRefs")) && (await page.isDisabled("#clearAddMany")));
+
+  // Add the exact same reference through the ordinary single-verse form
+  // while the batch's own lookup for it is still pending.
+  await page.fill("#newRef", "Titus 3:1");
+  await page.fill("#newText", "Put them in mind to be subject to principalities and powers, to obey magistrates, to be ready to every good work.");
+  await page.click("#addForm button[type=submit]");
+  eq("the concurrently-added card exists before the batch's own lookup resolves",
+    await page.locator(".card").filter({ hasText: "Titus 3:1" }).count(), 1);
+
+  await page.evaluate(() => window.__releaseLookup());
+  await page.waitForFunction(() => document.getElementById("addManyBtn").textContent === "Look up and add");
+
+  eq("the batch does not duplicate a reference added elsewhere while it was pending",
+    await page.locator(".card").filter({ hasText: "Titus 3:1" }).count(), 1);
+  check("the batch's status line counts it as already in the deck, not as added",
+    (await page.textContent("#addManyStatus")).includes("1 already in your deck"));
+  check("the textarea and Clear are unlocked again once the batch finishes",
+    !(await page.isDisabled("#manyRefs")) && !(await page.isDisabled("#clearAddMany")));
+
+  await ctx.close();
+}
+
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
   const page = await ctx.newPage();

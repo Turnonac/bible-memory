@@ -1661,19 +1661,19 @@
     err.textContent = "";
     status.textContent = "";
     const lines = parseManyRefs($("manyRefs").value);
-    if (!lines.length) { err.textContent = "Paste one or more references, one per line."; $("manyRefs").focus(); return; }
+    if (!lines.length) { err.textContent = "Paste one or more references, one per line or comma-separated."; $("manyRefs").focus(); return; }
     if (lines.length > ADD_MANY_MAX) {
       err.textContent = "Up to " + ADD_MANY_MAX + " references at a time — split into batches.";
       return;
     }
     const btn = $("addManyBtn");
+    const textarea = $("manyRefs");
+    const clearBtn = $("clearAddMany");
     btn.disabled = true;
+    textarea.disabled = true;
+    clearBtn.disabled = true;
     const original = btn.textContent;
     btn.textContent = "Looking up…";
-    // Seeded from the deck as it stands now, then grown as each lookup lands —
-    // a reference repeated within the pasted batch itself is caught the same
-    // way as one already in the deck, not added twice.
-    const existing = existingRefSet();
     let added = 0, skipped = 0;
     const failed = []; // { line, error }
     for (const line of lines) {
@@ -1681,12 +1681,20 @@
       try { result = await lookupReference(line); }
       catch (e2) { result = { error: "Couldn't look that up just now." }; }
       if (result.error) { failed.push({ line, error: result.error }); continue; }
-      if (existing.has(result.ref.toLowerCase())) { skipped++; continue; }
+      // Read fresh right before every insert, not captured once before the
+      // loop — each await above gives the rest of the page a turn, so a
+      // verse can be added, removed, or edited elsewhere in the deck (or
+      // by an earlier line in this same batch) while a later line is still
+      // being looked up. Re-reading state.verses here catches both: a
+      // reference repeated within the pasted batch shows up because the
+      // previous line's own push already landed in state.verses.
+      if (existingRefSet().has(result.ref.toLowerCase())) { skipped++; continue; }
       state.verses.push(blankVerse(result.ref, result.text, "custom"));
-      existing.add(result.ref.toLowerCase());
       added++;
     }
     btn.disabled = false;
+    textarea.disabled = false;
+    clearBtn.disabled = false;
     btn.textContent = original;
     if (added) { save(); renderAll(); }
     const parts = [];
