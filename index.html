@@ -775,23 +775,23 @@
   .card-edit .reflookup .btn { flex: none; white-space: nowrap; }
 
   /* ---------- add / io ---------- */
-  details.add, details.shortcuts {
+  details.add, details.add-many, details.shortcuts {
     margin-top: 1.5rem;
     border: 1px solid var(--rule);
     border-radius: 3px;
     background: var(--raised);
   }
-  details.add > summary, details.shortcuts > summary {
+  details.add > summary, details.add-many > summary, details.shortcuts > summary {
     cursor: pointer;
     padding: .7rem 1rem;
     font-size: .8125rem;
     color: var(--ink-soft);
     list-style: none;
   }
-  details.add > summary::-webkit-details-marker, details.shortcuts > summary::-webkit-details-marker { display: none; }
-  details.add > summary::before, details.shortcuts > summary::before { content: "+ "; color: var(--madder); }
-  details.add[open] > summary::before, details.shortcuts[open] > summary::before { content: "\2212 "; }
-  details.add > summary:hover, details.shortcuts > summary:hover { color: var(--ink); }
+  details.add > summary::-webkit-details-marker, details.add-many > summary::-webkit-details-marker, details.shortcuts > summary::-webkit-details-marker { display: none; }
+  details.add > summary::before, details.add-many > summary::before, details.shortcuts > summary::before { content: "+ "; color: var(--madder); }
+  details.add[open] > summary::before, details.add-many[open] > summary::before, details.shortcuts[open] > summary::before { content: "\2212 "; }
+  details.add > summary:hover, details.add-many > summary:hover, details.shortcuts > summary:hover { color: var(--ink); }
   .form { padding: 0 1rem 1.1rem; display: flex; flex-direction: column; gap: .7rem; max-width: 40rem; }
   .form label {
     font-family: var(--mono);
@@ -815,6 +815,7 @@
   .form .reflookup input { flex: 1; min-width: 0; }
   .form .reflookup .btn { flex: none; white-space: nowrap; }
   .form .err { color: var(--madder); font-size: .75rem; min-height: 1.1em; margin: 0; }
+  .form .status { color: var(--ink-soft); font-size: .75rem; min-height: 1.1em; margin: 0; }
   .form .actions { display: flex; gap: .5rem; align-items: center; }
 
   .shortcuts-list {
@@ -1078,6 +1079,22 @@
       </form>
     </details>
 
+    <details class="add-many" id="addMany" hidden>
+      <summary>Add several at once</summary>
+      <form class="form" id="addManyForm">
+        <div>
+          <label for="manyRefs">References, one per line or comma-separated</label>
+          <textarea id="manyRefs" placeholder="John 3:16&#10;Romans 8:28&#10;Psalm 23:1-6"></textarea>
+        </div>
+        <p class="err" id="addManyErr"></p>
+        <p class="status" id="addManyStatus" aria-live="polite"></p>
+        <div class="actions">
+          <button class="btn primary" type="submit" id="addManyBtn">Look up and add</button>
+          <button class="btn quiet" type="button" id="clearAddMany">Clear</button>
+        </div>
+      </form>
+    </details>
+
     <footer class="colophon">
       <span>Starter passages are King James Version, public domain.</span>
       <span>Progress is saved in this browser only &mdash; export to keep a copy.</span>
@@ -1163,6 +1180,13 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
                                 // card) rebuilds the form from what's been typed, not from the
                                 // unchanged verse on disk — otherwise the rebuild silently
                                 // discards whatever the reader was mid-typing
+
+  // The one case-insensitive "is this reference already in my deck" rule,
+  // shared by deck sharing and add-several-at-once so the two "is this a
+  // duplicate" checks can't silently drift apart from each other.
+  function existingRefSet() {
+    return new Set(state.verses.map(v => v.ref.toLowerCase()));
+  }
 
   function blankVerse(ref, text, source) {
     return {
@@ -2157,6 +2181,11 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
    * ------------------------------------------------------------------ */
   const KJV_LOOKUP_SUPPORTED = typeof DecompressionStream !== "undefined";
 
+  // A batch this large is already a copy-pasted reading plan, not a quick
+  // add — bounding it keeps one runaway paste from queuing thousands of
+  // sequential lookups.
+  const ADD_MANY_MAX = 50;
+
   const BOOK_ALIAS = {
     "psalm": "Psalms",
     "song of solomon": "Solomon's Song",
@@ -2319,7 +2348,7 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
   }
 
   function describeShared(verses) {
-    const existing = new Set(state.verses.map(v => v.ref.toLowerCase()));
+    const existing = existingRefSet();
     const fresh = verses.filter(v => !existing.has(v.ref.toLowerCase())).length;
     if (fresh === 0) {
       return "Already in your deck — nothing new to add.";
@@ -2331,7 +2360,7 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
   }
 
   function addSharedDeck(verses) {
-    const existing = new Set(state.verses.map(v => v.ref.toLowerCase()));
+    const existing = existingRefSet();
     let added = 0;
     verses.forEach(sv => {
       if (existing.has(sv.ref.toLowerCase())) return;
@@ -2727,6 +2756,76 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     $("newRef").value = "";
     $("newText").value = "";
     $("addErr").textContent = "";
+  });
+
+  $("addMany").hidden = !KJV_LOOKUP_SUPPORTED;
+
+  function parseManyRefs(raw) {
+    return raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+  }
+
+  $("addManyForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const err = $("addManyErr");
+    const status = $("addManyStatus");
+    err.textContent = "";
+    status.textContent = "";
+    const lines = parseManyRefs($("manyRefs").value);
+    if (!lines.length) { err.textContent = "Paste one or more references, one per line or comma-separated."; $("manyRefs").focus(); return; }
+    if (lines.length > ADD_MANY_MAX) {
+      err.textContent = "Up to " + ADD_MANY_MAX + " references at a time — split into batches.";
+      return;
+    }
+    const btn = $("addManyBtn");
+    const textarea = $("manyRefs");
+    const clearBtn = $("clearAddMany");
+    btn.disabled = true;
+    textarea.disabled = true;
+    clearBtn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Looking up…";
+    let added = 0, skipped = 0;
+    const failed = []; // { line, error }
+    for (const line of lines) {
+      let result;
+      try { result = await lookupReference(line); }
+      catch (e2) { result = { error: "Couldn't look that up just now." }; }
+      if (result.error) { failed.push({ line, error: result.error }); continue; }
+      // Read fresh right before every insert, not captured once before the
+      // loop — each await above gives the rest of the page a turn, so a
+      // verse can be added, removed, or edited elsewhere in the deck (or
+      // by an earlier line in this same batch) while a later line is still
+      // being looked up. Re-reading state.verses here catches both: a
+      // reference repeated within the pasted batch shows up because the
+      // previous line's own push already landed in state.verses.
+      if (existingRefSet().has(result.ref.toLowerCase())) { skipped++; continue; }
+      state.verses.push(blankVerse(result.ref, result.text, "custom"));
+      added++;
+    }
+    btn.disabled = false;
+    textarea.disabled = false;
+    clearBtn.disabled = false;
+    btn.textContent = original;
+    if (added) { save(); renderAll(); }
+    const parts = [];
+    if (added) parts.push(added + (added === 1 ? " verse added" : " verses added"));
+    if (skipped) parts.push(skipped + " already in your deck");
+    if (failed.length) parts.push(failed.length + (failed.length === 1 ? " reference not found" : " references not found"));
+    status.textContent = parts.length ? parts.join(", ") + "." : "";
+    if (failed.length) {
+      // Leave only the unresolved lines behind so a typo can be fixed and
+      // resubmitted without retyping everything that already went through.
+      err.textContent = failed.map(f => f.line + " — " + f.error).join("; ");
+      $("manyRefs").value = failed.map(f => f.line).join("\n");
+    } else {
+      $("manyRefs").value = "";
+    }
+  });
+
+  $("clearAddMany").addEventListener("click", () => {
+    $("manyRefs").value = "";
+    $("addManyErr").textContent = "";
+    $("addManyStatus").textContent = "";
   });
 
   document.addEventListener("keydown", e => {

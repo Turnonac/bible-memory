@@ -39,6 +39,15 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Add several verses at once by reference. A second "Add several at
+  once" disclosure sits beside "Add a verse of your own", taking a
+  newline- or comma-separated list of references, looking each one up
+  against the bundled KJV, and adding every one that resolves — skipping
+  anything already in the deck (or repeated within the same paste) and
+  reporting what happened ("3 verses added, 1 already in your deck, 1
+  reference not found"). Unresolved references are left behind in the
+  textarea so a typo can be fixed and resubmitted without retyping the
+  rest. *(2026-08-31)*
 - [x] Keyboard shortcuts help panel. **Now** and **Next** were both empty
   tonight; the page has bound real keyboard shortcuts since early on — 1–4
   to switch modes, arrow keys to step between verses, `[`/`]` to change the

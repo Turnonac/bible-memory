@@ -163,6 +163,22 @@
       </form>
     </details>
 
+    <details class="add-many" id="addMany" hidden>
+      <summary>Add several at once</summary>
+      <form class="form" id="addManyForm">
+        <div>
+          <label for="manyRefs">References, one per line or comma-separated</label>
+          <textarea id="manyRefs" placeholder="John 3:16&#10;Romans 8:28&#10;Psalm 23:1-6"></textarea>
+        </div>
+        <p class="err" id="addManyErr"></p>
+        <p class="status" id="addManyStatus" aria-live="polite"></p>
+        <div class="actions">
+          <button class="btn primary" type="submit" id="addManyBtn">Look up and add</button>
+          <button class="btn quiet" type="button" id="clearAddMany">Clear</button>
+        </div>
+      </form>
+    </details>
+
     <footer class="colophon">
       <span>Starter passages are King James Version, public domain.</span>
       <span>Progress is saved in this browser only &mdash; export to keep a copy.</span>
