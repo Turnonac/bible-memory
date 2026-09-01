@@ -2594,7 +2594,11 @@ const installGatedLookup = () => {
     verses: [{
       id: "vCorrupt", ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want.",
       source: "kjv", attempts: 3, best: 92,
-      recent: [80, "78%", 92],
+      // A non-numeric entry, and two in-range-of-Number but out of a
+      // recall score's real 0–100 range — every field that isn't just a
+      // type check normalizeVerse() might plausibly see from a hand-
+      // edited payload, in one array.
+      recent: [80, "78%", 150, -20, 92],
       ease: 2.5, reps: 1, interval: 6, due: null, last: null
     }],
     activeId: "vCorrupt",
@@ -2607,6 +2611,9 @@ const installGatedLookup = () => {
   const label = await spark.getAttribute("aria-label");
   check(`a non-numeric recent score is dropped, not turned into NaN in the sparkline's label (got "${label}")`,
     label !== null && !label.includes("NaN"));
+  check(`an out-of-range recent score is clamped to a real 0–100 score, not passed through (got "${label}")`,
+    label !== null && !label.includes("150%") && !label.includes("-20%") &&
+    label.includes("100%") && label.includes("0%,"));
   const points = await spark.locator("polyline").getAttribute("points");
   check(`...and its coordinates stay real numbers, not NaN (got "${points}")`,
     points !== null && !points.includes("NaN"));

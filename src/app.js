@@ -120,7 +120,9 @@
       attempts: Number(v.attempts) || 0,
       best: Number(v.best) || 0,
       last: DAY.test(String(v.last)) ? String(v.last) : null,
-      recent: Array.isArray(v.recent) ? v.recent.map(Number).filter(Number.isFinite).slice(-5) : [],
+      recent: Array.isArray(v.recent)
+        ? v.recent.map(Number).filter(Number.isFinite).map(n => Math.min(100, Math.max(0, n))).slice(-5)
+        : [],
       ease: Number(v.ease) >= EASE_FLOOR ? Math.min(Number(v.ease), 5) : EASE_START,
       reps: whole(v.reps, 999),
       interval: whole(v.interval, MAX_INTERVAL),
