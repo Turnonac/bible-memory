@@ -3,6 +3,75 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-01 — recent-score sparkline on deck cards
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (438 total: 1 build + 113 KJV + 324 UI),
+and `ROADMAP.md`'s **Now** and **Next** were both empty, so — per the
+working agreement — proposed my own item.
+
+Every card's stat row already shows the verse's all-time `best` score, but
+nothing on the page has ever shown whether *recent* attempts are trending
+up or down — a verse stuck at "best 92%" could be climbing steadily or have
+peaked once and been sliding ever since, and the two look identical in that
+one number. `v.recent` (the last up to 5 recall scores) was already being
+recorded — it's what `isMastered()` reads to decide the checkmark — but
+nothing ever surfaced it. A small inline-SVG sparkline now sits right next
+to "best 92% · 5×" on any card with two or more attempts (a single point
+has no trend to show, so nothing draws); it's scaled to its own min/max
+rather than a fixed 0–100 scale, since the absolute number is already
+sitting in the text right beside it and a fixed scale would flatten the
+line into a near-straight edge whenever scores cluster near the top, which
+is most of the time once a verse is a few reps in. The endpoint dot reuses
+the exact three-tier color logic (verdigris at mastery level, madder below
+a comfortable 70%, ink between) the recite result panel's own `pct` color
+already used — extracted into a shared `scoreColor()` rather than left
+duplicated a second place. No schema change: this is a pure read of data
+already being stored, so no `SCHEMA` bump and no `migrate()` branch needed.
+
+**Self-review (`code-review` skill) caught a real bug before shipping.**
+`normalizeVerse()` — the one function CLAUDE.md names as the boundary a
+hand-edited or truncated field can't get past to reach the scheduler —
+guards `ease`/`reps`/`interval`/`due` with explicit finiteness checks, but
+mapped `recent` through a bare `Number()` with no such check. A non-numeric
+entry (a hand-edited localStorage payload, most plausibly) silently became
+`NaN` in memory and stayed harmless as long as nothing read it — `isMastered()`'s
+`>=` comparison against `NaN` is always false, so mastery status degraded
+gracefully — but the sparkline is the first thing that actually renders
+`recent`'s values, and `NaN` propagated straight into its SVG coordinates
+(`points="2,NaN 20,NaN 38,NaN"`) and its accessible label ("NaN%, 92%.").
+Reproduced directly: seeded a verse with `recent: [80, "78%", 92]`, watched
+the unfixed code render exactly that broken label and those broken
+coordinates. Fixed by filtering to finite numbers before slicing to the
+last 5, in `normalizeVerse()` itself rather than only in the sparkline's own
+code — the fix belongs at the boundary the invariant already names, and it
+protects every other reader of `v.recent` (`isMastered()`, the SM-2 replay
+in `migrate()`) from the same class of corruption, not just this one new
+call site. New regression test seeds that exact corrupted payload through
+`load()` and asserts neither the label nor the polyline's own coordinates
+contain "NaN", and that no page error is raised; mutation-tested by
+reverting the filter — both checks failed with the precise corruption
+described above, confirming the fix is what's carrying them.
+
+Code-review's other finding was a maintainability note, not a bug: the
+sparkline's SVG construction (`createElementNS` + a run of `setAttribute`
+calls) duplicated a pattern already used once for the deck's mastery
+checkmark. Factored a tiny `svgEl(tag, attrs)` helper — mirroring the
+existing `el(tag, cls)` for HTML elements — and moved both call sites onto
+it; a third SVG addition now has one place to be consistent rather than a
+third copy-pasted block. No visual change from this half of the diff,
+confirmed by a before/after screenshot of the mastery checkmark.
+
+`npm test`: 1 build + 113 KJV + 336 UI (up from 324, 12 new checks) — 450
+total. Verified in the harness (real Chromium) in both themes and at
+390px: rising, falling, and flat score runs each render a correctly-scaled
+line with the endpoint dot in the right tier color; a card with zero or one
+attempts shows no sparkline and its "not yet recited" / "best X% · 1×" text
+is unchanged; the row doesn't wrap or clip at the narrow width; dark theme
+keeps the line and every dot color legible against `--sunken`.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-08-31 — add several verses at once by reference
 
 No open PRs from previous runs, `main` was green (416 total: 1 build + 113

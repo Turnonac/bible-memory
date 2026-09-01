@@ -731,6 +731,13 @@
     letter-spacing: .04em;
     color: var(--ink-faint);
   }
+  .card .stat .spark {
+    display: inline-block;
+    width: 1.6rem;
+    height: .6rem;
+    margin-left: .4em;
+    vertical-align: -1px;
+  }
   .card .stat .stat-actions { display: flex; gap: .65rem; }
   .card .stat .edit,
   .card .stat .drop {
@@ -1230,7 +1237,7 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
       attempts: Number(v.attempts) || 0,
       best: Number(v.best) || 0,
       last: DAY.test(String(v.last)) ? String(v.last) : null,
-      recent: Array.isArray(v.recent) ? v.recent.slice(-5).map(Number) : [],
+      recent: Array.isArray(v.recent) ? v.recent.map(Number).filter(Number.isFinite).slice(-5) : [],
       ease: Number(v.ease) >= EASE_FLOOR ? Math.min(Number(v.ease), 5) : EASE_START,
       reps: whole(v.reps, 999),
       interval: whole(v.interval, MAX_INTERVAL),
@@ -1514,6 +1521,11 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
    * ------------------------------------------------------------------ */
   const $ = id => document.getElementById(id);
   const el = (tag, cls) => { const n = document.createElement(tag); if (cls) n.className = cls; return n; };
+  const svgEl = (tag, attrs) => {
+    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  };
 
   function revealable(cls, label, i) {
     const s = el("span", cls);
@@ -1689,6 +1701,47 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
       last = m.index + m[0].length;
     }
     if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+  }
+
+  // Reads a recall score the same way the result panel's own pct color does
+  // — verdigris at mastery level, madder below a comfortable 70%, ink between.
+  function scoreColor(score) {
+    return score >= MASTERY_SCORE ? "var(--verdigris)" : score >= 70 ? "var(--ink)" : "var(--madder)";
+  }
+
+  // A sparkline of a verse's own recent scores (v.recent — up to the last 5,
+  // oldest to newest). Scaled to its own min/max rather than a fixed 0–100:
+  // the absolute number already sits in the text right beside it ("best 92%
+  // · 5×"), so the sparkline's job is showing whether recent attempts are
+  // trending up or down, and a fixed scale would flatten that into a near-
+  // straight line whenever scores cluster near the top, which is most of the
+  // time once a verse is past its first few reps.
+  function buildSparkline(recent) {
+    if (recent.length < 2) return null;
+    const w = 40, h = 12, padX = 2, padY = 2;
+    const min = Math.min(...recent), max = Math.max(...recent);
+    const span = max - min;
+    const x = i => padX + (i / (recent.length - 1)) * (w - padX * 2);
+    const y = s => span === 0 ? h / 2 : h - padY - ((s - min) / span) * (h - padY * 2);
+    const svg = svgEl("svg", {
+      class: "spark",
+      viewBox: "0 0 " + w + " " + h,
+      role: "img",
+      "aria-label": "Recent scores, oldest to newest: " + recent.join("%, ") + "%."
+    });
+    svg.appendChild(svgEl("polyline", {
+      points: recent.map((s, i) => x(i) + "," + y(s)).join(" "),
+      fill: "none",
+      stroke: "var(--ink-faint)",
+      "stroke-width": "1.4",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round"
+    }));
+    const last = recent.length - 1;
+    svg.appendChild(svgEl("circle", {
+      cx: x(last), cy: y(recent[last]), r: "1.6", fill: scoreColor(recent[last])
+    }));
+    return svg;
   }
 
   // "added" is a no-op — state.verses is already insertion order, since every
@@ -1891,17 +1944,13 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
       open.addEventListener("click", () => selectVerse(v.id));
       ref.appendChild(open);
       if (isMastered(v)) {
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.setAttribute("viewBox", "0 0 16 16");
-        svg.setAttribute("fill", "none");
-        svg.setAttribute("stroke", "currentColor");
-        svg.setAttribute("stroke-width", "2.4");
-        svg.setAttribute("aria-hidden", "true");
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", "M2.5 8.5 6 12l7.5-8");
-        path.setAttribute("stroke-linecap", "round");
-        path.setAttribute("stroke-linejoin", "round");
-        svg.appendChild(path);
+        const svg = svgEl("svg", {
+          viewBox: "0 0 16 16", fill: "none", stroke: "currentColor",
+          "stroke-width": "2.4", "aria-hidden": "true"
+        });
+        svg.appendChild(svgEl("path", {
+          d: "M2.5 8.5 6 12l7.5-8", "stroke-linecap": "round", "stroke-linejoin": "round"
+        }));
         ref.appendChild(svg);
       }
 
@@ -1922,7 +1971,13 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
 
       const stat = el("div", "stat");
       const left = el("span");
-      left.textContent = v.attempts ? "best " + v.best + "% · " + v.attempts + "×" : "not yet recited";
+      if (v.attempts) {
+        left.appendChild(document.createTextNode("best " + v.best + "% · " + v.attempts + "×"));
+        const spark = buildSparkline(v.recent);
+        if (spark) left.appendChild(spark);
+      } else {
+        left.textContent = "not yet recited";
+      }
       const edit = el("button", "edit");
       edit.type = "button";
       edit.textContent = "edit";
@@ -2141,7 +2196,7 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     save();
 
     $("pct").textContent = res.score + "%";
-    $("pct").style.color = res.score >= MASTERY_SCORE ? "var(--verdigris)" : res.score >= 70 ? "var(--ink)" : "var(--madder)";
+    $("pct").style.color = scoreColor(res.score);
 
     const bd = $("breakdown");
     bd.textContent = "";
