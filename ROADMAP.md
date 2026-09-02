@@ -39,6 +39,40 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Recent-score sparkline on deck cards. Both **Now** and **Next** were
+  empty tonight, so proposed my own item. Each card's stat row already showed
+  the all-time `best` score but nothing about whether recent attempts are
+  trending up or down; `v.recent` (the last up-to-5 recall scores) was already
+  being stored for the mastery check but never surfaced anywhere. A small
+  inline-SVG sparkline now sits next to "best 92% · 5×" on any card with 2+
+  attempts (fewer than 2 points is not a trend, so nothing draws), scaled to
+  its own min/max rather than a fixed 0–100 — the absolute number is already
+  in the text beside it, so the sparkline's job is showing the shape of
+  recent change, and a fixed scale would flatten that whenever scores cluster
+  near the top. The endpoint dot reuses the same three-tier score-color
+  logic the result panel's own `pct` color already used (extracted into a
+  shared `scoreColor()` — was inlined twice). No schema change: pure read of
+  existing `v.recent`. Self-review (`code-review` skill) caught a real bug:
+  `normalizeVerse()` mapped `recent` through `Number()` with no finiteness
+  check, unlike every other scheduler field it guards — a non-numeric entry
+  (a hand-edited localStorage payload, e.g.) became `NaN` in memory and only
+  surfaced once something finally rendered it, corrupting the sparkline's
+  coordinates and its screen-reader label ("NaN%"). This directly broke
+  CLAUDE.md's own stated invariant that "a hand-edited or truncated field
+  can't reach the scheduler" through `normalizeVerse()`. Fixed by filtering
+  to finite numbers before slicing to the last 5. Mutation-tested by
+  reverting the filter: the new regression test failed exactly as expected
+  (`NaN%` in the label, `NaN` in the polyline's coordinates), confirming the
+  fix is what's carrying it. Also factored a tiny `svgEl(tag, attrs)` helper
+  (mirroring the existing `el(tag, cls)`) after code-review flagged that the
+  sparkline's hand-rolled `createElementNS`/`setAttribute` calls duplicated
+  the pattern already used once for the deck's mastery checkmark — both now
+  share it. `npm test`: 1 build + 113 KJV + 336 UI (up from 324, 12 new
+  checks) — 450 total. Verified in the harness in both themes and at 390px:
+  the line and dot render correctly for rising, falling, and flat score
+  runs, the dot picks the right color at each tier, cards with 0 or 1
+  attempts show no sparkline, and the row doesn't wrap or clip at the narrow
+  width. *(2026-09-01)*
 - [x] Add several verses at once by reference. A second "Add several at
   once" disclosure sits beside "Add a verse of your own", taking a
   newline- or comma-separated list of references, looking each one up

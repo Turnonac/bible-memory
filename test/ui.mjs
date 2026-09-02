@@ -2515,6 +2515,113 @@ const installGatedLookup = () => {
   }
 }
 
+/* ============================ recent-score sparkline ====================== */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+
+  const v = (over) => Object.assign({
+    id: "v" + over.ref.replace(/\W/g, ""), source: "kjv",
+    ease: 2.5, reps: 0, interval: 0, due: null, last: null
+  }, over);
+
+  const payload = {
+    schema: 2,
+    verses: [
+      v({ ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want.", attempts: 0, best: 0, recent: [] }),
+      v({ ref: "John 3:16", text: "For God so loved the world, that he gave his only begotten Son.", attempts: 1, best: 70, recent: [70] }),
+      v({ ref: "Romans 8:28", text: "And we know that all things work together for good.", attempts: 3, best: 96, recent: [55, 80, 96] }),
+      v({ ref: "Psalm 46:1", text: "God is our refuge and strength, a very present help in trouble.", attempts: 3, best: 90, recent: [90, 80, 60] }),
+      v({ ref: "Micah 6:8", text: "He hath shewed thee, O man, what is good.", attempts: 2, best: 90, recent: [90, 82] }),
+      v({ ref: "Isaiah 41:10", text: "Fear thou not; for I am with thee: be not dismayed.", attempts: 2, best: 100, recent: [100, 100] })
+    ],
+    activeId: "vPsalm231",
+    history: {}
+  };
+  await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), payload);
+  await page.reload();
+
+  const card = ref => page.locator(".card").filter({ hasText: ref });
+  const spark = ref => card(ref).locator(".spark");
+
+  eq("an unattempted verse still reads \"not yet recited\", no sparkline",
+    await spark("Psalm 23:1").count(), 0);
+  check("...its stat line is unchanged by the new feature",
+    (await card("Psalm 23:1").locator(".stat").textContent()).includes("not yet recited"));
+  eq("a single attempt is not a trend, so it draws no sparkline either",
+    await spark("John 3:16").count(), 0);
+  eq("two or more attempts draw a sparkline",
+    await spark("Romans 8:28").count(), 1);
+
+  const label = await spark("Romans 8:28").getAttribute("aria-label");
+  check(`the sparkline's label lists recent scores oldest to newest (got "${label}")`,
+    label.indexOf("55") < label.indexOf("80") && label.indexOf("80") < label.indexOf("96"));
+
+  // The endpoint dot reads the latest score the same three-way way the
+  // result panel's own pct color already does — mastery-tier verdigris,
+  // a comfortable middle in ink, below 70% in madder.
+  eq("a rising trend that reaches mastery level colors its endpoint verdigris",
+    await spark("Romans 8:28").locator("circle").getAttribute("fill"), "var(--verdigris)");
+  eq("a mid-range latest score colors its endpoint in plain ink",
+    await spark("Micah 6:8").locator("circle").getAttribute("fill"), "var(--ink)");
+  eq("a falling trend below 70% colors its endpoint madder",
+    await spark("Psalm 46:1").locator("circle").getAttribute("fill"), "var(--madder)");
+
+  const flatPoints = await spark("Isaiah 41:10").locator("polyline").getAttribute("points");
+  check(`a flat run of identical scores still draws a valid line, not NaN (got "${flatPoints}")`,
+    !flatPoints.includes("NaN"));
+
+  await ctx.close();
+}
+
+/* ==================== a corrupted recent score can't reach the DOM as NaN = */
+{
+  // normalizeVerse() is the one place CLAUDE.md promises a hand-edited or
+  // truncated field can't reach downstream code — but unlike ease/reps/
+  // interval/due, `recent` was passed through `.map(Number)` with no finite
+  // check, so a non-numeric entry (a hand-edited localStorage payload, or a
+  // future import format quirk) became NaN in memory and only surfaced once
+  // something actually rendered it: the sparkline's own coordinates.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", e => errors.push(String(e)));
+  await page.goto(url);
+
+  const payload = {
+    schema: 2,
+    verses: [{
+      id: "vCorrupt", ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want.",
+      source: "kjv", attempts: 3, best: 92,
+      // A non-numeric entry, and two in-range-of-Number but out of a
+      // recall score's real 0–100 range — every field that isn't just a
+      // type check normalizeVerse() might plausibly see from a hand-
+      // edited payload, in one array.
+      recent: [80, "78%", 150, -20, 92],
+      ease: 2.5, reps: 1, interval: 6, due: null, last: null
+    }],
+    activeId: "vCorrupt",
+    history: {}
+  };
+  await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), payload);
+  await page.reload();
+
+  const spark = page.locator(".card").first().locator(".spark");
+  const label = await spark.getAttribute("aria-label");
+  check(`a non-numeric recent score is dropped, not turned into NaN in the sparkline's label (got "${label}")`,
+    label !== null && !label.includes("NaN"));
+  check(`an out-of-range recent score is clamped to a real 0–100 score, not passed through (got "${label}")`,
+    label !== null && !label.includes("150%") && !label.includes("-20%") &&
+    label.includes("100%") && label.includes("0%,"));
+  const points = await spark.locator("polyline").getAttribute("points");
+  check(`...and its coordinates stay real numbers, not NaN (got "${points}")`,
+    points !== null && !points.includes("NaN"));
+  check("loading the corrupted payload raised no page error", errors.length === 0, errors.join(" | "));
+
+  await ctx.close();
+}
+
 /* ============================ layout and a11y =========================== */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });

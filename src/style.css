@@ -729,6 +729,13 @@
     letter-spacing: .04em;
     color: var(--ink-faint);
   }
+  .card .stat .spark {
+    display: inline-block;
+    width: 1.6rem;
+    height: .6rem;
+    margin-left: .4em;
+    vertical-align: -1px;
+  }
   .card .stat .stat-actions { display: flex; gap: .65rem; }
   .card .stat .edit,
   .card .stat .drop {
