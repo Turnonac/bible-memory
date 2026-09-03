@@ -22,8 +22,8 @@ named `STRUGGLE_SCORE` constant both now share, rather than leaving a
 second copy of the same number to silently drift out of sync with the
 first. Deliberately keyed on the *last* attempt, not an average across
 `v.recent`: a verse that just had one rough run should surface right away,
-and a verse that's since turned around shouldn't stay flagged by an
-average two old bad scores are still dragging down. No `SCHEMA` bump or
+and a verse that's since turned around shouldn't stay flagged because an
+average still includes two old bad scores. No `SCHEMA` bump or
 `migrate()` branch — this reads data already being recorded, the same
 "view state" treatment `deckQuery`/`deckSort`/the other three filter
 values already get. Composes with search and sort exactly like the
