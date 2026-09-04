@@ -2049,6 +2049,10 @@ const installGatedLookup = () => {
     eq("the not-started filter shows only a verse with zero attempts",
       await refs(), "Micah 6:8");
 
+    await page.selectOption("#deckFilter", "struggling");
+    eq("the needs-work filter shows only a verse whose most recent score fell below 70%",
+      await refs(), "Psalm 46:1");
+
     await page.selectOption("#deckFilter", "due");
     await page.fill("#deckSearch", "micah");
     eq("a filter composes with an active search query", await refs(), "Micah 6:8");
@@ -2099,6 +2103,61 @@ const installGatedLookup = () => {
     await page.selectOption("#deckFilter", "mastered");
     eq("no mastered verses names that directly",
       await page.textContent("#cardsEmpty"), "No verses mastered yet.");
+
+    await ctx.close();
+  }
+
+  /* --- the needs-work filter reads only the most recent attempt, at a
+     70% boundary shared with the sparkline dot's own madder/ink cutoff --- */
+  {
+    const NEEDS_WORK = {
+      schema: 2,
+      verses: [
+        // most recent attempt landed right at the "comfortable" boundary —
+        // scoreColor() treats 70 itself as ink, not madder, so this must not
+        // count as struggling either.
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 1, best: 70, last: null,
+                recent: [70] }),
+        // one point below the boundary.
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 1, best: 69, last: null,
+                recent: [69] }),
+        // a rough start followed by recovery — the *last* score is what
+        // matters, not an average across recent, so two bad early runs must
+        // not keep flagging a verse that's since turned around.
+        verse({ ref: "Micah 6:8", text: "He hath shewed thee, O man, what is good.",
+                attempts: 3, best: 95, last: null, recent: [40, 40, 95] })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(NEEDS_WORK);
+    const refs = async () => (await page.$$eval(".card .ref .open", ns => ns.map(n => n.textContent))).join(", ");
+
+    await page.selectOption("#deckFilter", "struggling");
+    eq("70% itself reads as comfortable, not struggling, and a recovered verse isn't flagged by its own past",
+      await refs(), "Psalm 46:1");
+
+    await ctx.close();
+  }
+
+  /* --- the needs-work filter's own empty state, distinct from every other
+     filter's wording --- */
+  {
+    const NOTHING_STRUGGLING = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 3, best: 99, last: null,
+                recent: [96, 97, 99] }),
+        verse({ ref: "Psalm 46:1", text: PSA })   // never attempted
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(NOTHING_STRUGGLING);
+
+    await page.selectOption("#deckFilter", "struggling");
+    eq("no verse needing work names that directly, not the search-style wording",
+      await page.textContent("#cardsEmpty"), "Nothing needs extra work right now.");
 
     await ctx.close();
   }

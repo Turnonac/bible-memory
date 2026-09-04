@@ -3,6 +3,71 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-03 — a "Needs work" deck filter
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (451 total: 1 build + 113 KJV + 337 UI),
+and `ROADMAP.md`'s **Now** and **Next** were both empty, so — per the
+working agreement — proposed my own item. The 2026-09-01 sparkline made
+`v.recent` visible for the first time but gave a reader no way to *act* on
+it beyond eyeballing every card in turn; the deck's own status filter
+(due/mastered/not-started) already had a clear slot for a fourth facet
+that would actually do something with that data.
+
+A "Needs work" option in `#deckFilter` narrows the grid to verses whose
+*most recent* recall score is below the same 70%-"comfortable" line
+`scoreColor()` already uses to paint a sparkline dot or the recite result's
+`pct` figure madder instead of ink — pulled that literal `70` out into a
+named `STRUGGLE_SCORE` constant both now share, rather than leaving a
+second copy of the same number to silently drift out of sync with the
+first. Deliberately keyed on the *last* attempt, not an average across
+`v.recent`: a verse that just had one rough run should surface right away,
+and a verse that's since turned around shouldn't stay flagged because an
+average still includes two old bad scores. No `SCHEMA` bump or
+`migrate()` branch — this reads data already being recorded, the same
+"view state" treatment `deckQuery`/`deckSort`/the other three filter
+values already get. Composes with search and sort exactly like the
+existing filters, and earns its own named empty state ("Nothing needs
+extra work right now.") instead of falling through to a blank gap or
+someone else's stale wording.
+
+Self-review (`code-review` skill) found no defects to fix — traced every
+call site of `isStruggling`, `scoreColor`, `matchesFilter`, and
+`emptyStateMessage` and found them consistent, and confirmed
+`normalizeVerse()` already sanitizes `recent`/`attempts` before either
+reaches the new filter, so there's no unvalidated-input path here that
+isn't already guarded. It did flag one coincidence worth recording so a
+future run doesn't "fix" it by merging the two: `quality()` (the SM-2
+grading ladder) has its own long-standing, unrelated `score >= 70` — the
+pass-mark threshold, on a five-tier scale with its own boundaries at 95/
+85/70/50/25 — which happens to share the literal value `STRUGGLE_SCORE`
+now names but means something different. Left it as its own literal
+rather than wrongly conflating a UI "needs more practice" threshold with
+an SM-2 scheduling threshold just because they're numerically equal today.
+
+Mutation-tested two distinct claims. First, "the *last* score, not an
+average": swapped `isStruggling` to average across `v.recent` and reran —
+broke the dedicated boundary/recovery check, which seeds a verse with
+`recent: [40, 40, 95]` specifically to catch this (the averaging version
+wrongly re-flagged it as struggling; expected only the genuinely-still-low
+verse). Second, "the filter branch is what's carrying all of it": removed
+`matchesFilter`'s `struggling` case entirely — broke all three new checks,
+including the empty-state wording (which fell back to the unfiltered
+grid's blank caption instead of the dedicated message). Restored both and
+confirmed 340/340 UI again each time. `npm test`: 1 build + 113 KJV + 340
+UI (up from 337, 3 new checks) — 454 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and
+390px, against a small hand-seeded fixture (one verse mid-recovery from a
+low score, one freshly lapsed, one recently mastered) rather than
+reasoning about the code: the select renders inline with "Deck order" at
+the wide width and wraps cleanly onto its own row below the search box at
+390px in both themes; selecting "Needs work" shows exactly the two
+low-scoring cards, with the mastered one and its own green sparkline
+correctly excluded; the "N of M shown" caption updates to match.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-01 — recent-score sparkline on deck cards
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

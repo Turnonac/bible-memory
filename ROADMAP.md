@@ -39,6 +39,37 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] "Needs work" deck filter. Both **Now** and **Next** were empty tonight,
+  so proposed my own item — the natural next use of `v.recent`, the field
+  the previous night's sparkline first surfaced but only ever showed, never
+  acted on. A fourth `deckFilter` option narrows the grid to verses whose
+  *most recent* recall score fell below the same 70%-comfortable line the
+  sparkline's own endpoint dot and the recite result panel's `scoreColor()`
+  already draw the madder/ink line at — factored that literal into a named
+  `STRUGGLE_SCORE` constant shared by both, rather than a second, silently
+  driftable copy of the same number. Deliberately reads the *last* attempt
+  only, not an average across `v.recent`: a verse that just had one bad run
+  should surface immediately, and a verse that's since recovered shouldn't
+  stay flagged by an average still dragged down by its own past. No schema
+  change — pure read of data already being recorded. Composes with search
+  and sort exactly like the three existing filters already do, and gets its
+  own named empty state ("Nothing needs extra work right now.") rather than
+  falling through to a blank gap. Self-review (`code-review` skill) found
+  no defects; confirmed the one coincidental collision it flagged — `quality()`'s
+  own unrelated `score >= 70` SM-2 pass-mark threshold — is a different
+  concept that happens to share the same number, not the same constant, and
+  left it alone rather than wrongly conflating the two. Mutation-tested two
+  ways: swapping "most recent" for an average across `v.recent` broke the
+  dedicated boundary/recovery check (a verse with `recent: [40, 40, 95]`
+  wrongly reappeared as struggling); dropping the filter branch entirely
+  broke all three new checks, including the empty-state wording. `npm test`:
+  1 build + 113 KJV + 340 UI (up from 337, 3 new checks) — 454 total.
+  Verified in the harness (real Chromium) in both themes at 1100px and
+  390px: the select sits inline with "Deck order" at the wide width and
+  wraps cleanly below the search box at 390px in both themes, and a small
+  hand-seeded fixture (one verse recovering from a low score, one
+  freshly-lapsed) shows exactly the two struggling cards with the rest of
+  the grid correctly excluded. *(2026-09-03)*
 - [x] Recent-score sparkline on deck cards. Both **Now** and **Next** were
   empty tonight, so proposed my own item. Each card's stat row already showed
   the all-time `best` score but nothing about whether recent attempts are
