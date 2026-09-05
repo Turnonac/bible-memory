@@ -344,6 +344,74 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ undo a removal ============================= */
+{
+  // A removal deletes real practice history with no way back through the deck
+  // itself (unlike edit, which keeps the same id), so it gets a short grace
+  // window on top of the arm-then-confirm click — this covers the offer, the
+  // restore, and the deliberate single-slot scoping (a second removal forfeits
+  // the first verse's undo rather than queueing several).
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  const cards = () => page.$$eval(".card", n => n.length);
+  const dropFor = ref => page.locator(".card").filter({ hasText: ref }).locator(".drop");
+
+  const start = await cards();
+  await page.click("details.add > summary");
+  await page.fill("#newRef", "Undo Test 1:1");
+  await page.fill("#newText", "This line exists only to be removed and undone.");
+  await page.click("#addForm button[type=submit]");
+  eq("a verse is added to remove and undo", await cards(), start + 1);
+
+  check("the undo banner is hidden with nothing removed", !(await page.isVisible("#undoBanner")));
+
+  let drop = dropFor("Undo Test 1:1");
+  await drop.click();
+  await drop.click(); // confirm
+  eq("removal drops the card", await cards(), start);
+  check("the undo banner names the verse just removed",
+    (await page.textContent("#undoMsg")).includes("Undo Test 1:1"),
+    await page.textContent("#undoMsg"));
+  check("the just-removed card's control is gone, so focus moves to Undo instead of vanishing",
+    await page.evaluate(() => document.activeElement && document.activeElement.id), "undoBtn");
+
+  await page.click("#undoBtn");
+  eq("undo brings the card back", await cards(), start + 1);
+  check("the banner clears once the undo is used", !(await page.isVisible("#undoBanner")));
+  check("the restored card is the same verse, not a duplicate",
+    await page.locator(".card").filter({ hasText: "Undo Test 1:1" }).count() === 1);
+
+  // Remove it again, then remove a second, different verse before touching
+  // Undo — a single pending slot means the second removal's offer replaces
+  // the first's, and the first stays gone rather than both being queued.
+  drop = dropFor("Undo Test 1:1");
+  await drop.click();
+  await drop.click();
+  drop = dropFor("Genesis 1:1");
+  await drop.click();
+  await drop.click();
+  check("a second removal supersedes the first verse's pending undo",
+    (await page.textContent("#undoMsg")).includes("Genesis 1:1"),
+    await page.textContent("#undoMsg"));
+
+  await page.click("#undoBtn");
+  check("only the second removal comes back", await page.locator(".card").filter({ hasText: "Genesis 1:1" }).count() === 1);
+  check("the first removal is not silently also restored",
+    await page.locator(".card").filter({ hasText: "Undo Test 1:1" }).count() === 0);
+
+  // The offer itself expires — a stale "Undo" sitting on screen forever would
+  // misrepresent an action from minutes ago as still reversible.
+  drop = dropFor("Genesis 1:1");
+  await drop.click();
+  await drop.click();
+  check("the undo offer is showing right after a removal", await page.isVisible("#undoBanner"));
+  await page.waitForTimeout(6200);
+  check("...and is gone on its own after the grace window", !(await page.isVisible("#undoBanner")));
+
+  await ctx.close();
+}
+
 /* ============================ deck sharing by URL ======================== */
 let sharedHash;
 {
@@ -1222,6 +1290,46 @@ const installGatedLookup = () => {
 }
 
 {
+  // Same class of bug again, one step removed: undo hands the active verse
+  // back to the one that was removed, but the verse that took over in the
+  // meantime (Joshua 1:9) can have picked up its own listening session by
+  // then — undo must stop that session too, or its eventual onend grades a
+  // transcript spoken for Joshua against whichever verse is active by the
+  // time it fires.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+
+  await page.click('.card .open:has-text("Genesis 1:1")');
+  const drop = page.locator(".card").filter({ hasText: "Genesis 1:1" }).locator(".drop");
+  await drop.click();
+  await drop.click(); // confirm — Joshua 1:9 takes over as active
+  eq("the next verse takes over as active after the removal", await page.textContent("#ref"), "Joshua 1:9");
+
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "some words spoken for the verse that took over");
+
+  await page.click("#undoBtn"); // Genesis 1:1 comes back and becomes active again
+  eq("undo hands the active verse back to the one removed", await page.textContent("#ref"), "Genesis 1:1");
+
+  // Undo itself must have stopped Joshua's session — the session has
+  // genuinely ended once the control reverts to idle; a fixed sleep would
+  // race the recognizer's async onend instead, and if undo left the session
+  // running this never happens at all.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+
+  const attemptsAfterUndo = ref => page.evaluate(r =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === r)?.attempts, ref);
+  eq("the stray transcript isn't graded against the verse undo brought back",
+    await attemptsAfterUndo("Genesis 1:1"), 0);
+  eq("...nor silently against the verse it was actually spoken for",
+    await attemptsAfterUndo("Joshua 1:9"), 0);
+  await ctx.close();
+}
+
+{
   // Same class of bug as removing the recited verse mid-listen, but here the
   // verse object itself survives — editing it in place must still stop the
   // listener, or its eventual onend hands runCheck() a transcript spoken
@@ -1553,6 +1661,93 @@ const installGatedLookup = () => {
     await drop.click(); // confirm
     check("removing that verse retracts the next-due button",
       !(await page.locator("#nextDueBtn").isVisible()));
+    await page.click("#undoBtn");
+    check("undoing that removal reclaims the next-due button, naming the same verse",
+      (await page.textContent("#nextDueBtn")).includes("Psalm 46:1"),
+      await page.textContent("#nextDueBtn"));
+    await ctx.close();
+  }
+
+  /* --- ...but undo must not steal the slot back if something else has
+     legitimately claimed it during the grace window --- */
+  {
+    const HEB = "Now faith is the substance of things hoped for, the evidence of things not seen.";
+    const PRO = "Keep thy heart with all diligence; for out of it are the issues of life.";
+    const FOUR_DUE = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2020-01-01" }),
+        verse({ ref: "Psalm 46:1", text: PSA, ease: 2.5, reps: 0, interval: 0, due: "2020-01-02" }),
+        verse({ ref: "Hebrews 11:1", text: HEB, ease: 2.5, reps: 0, interval: 0, due: "2020-01-03" }),
+        verse({ ref: "Proverbs 4:23", text: PRO, ease: 2.5, reps: 0, interval: 0, due: "2020-01-04" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(FOUR_DUE);
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", GEN);
+    await page.click("#check"); // Genesis done; nextDueId -> Psalm 46:1 (soonest still due)
+    check("next due is Psalm 46:1 before any removal",
+      (await page.textContent("#nextDueBtn")).includes("Psalm 46:1"));
+
+    const drop = page.locator(".card").filter({ hasText: "Psalm 46:1" }).locator(".drop");
+    await drop.click();
+    await drop.click(); // confirm — retracts the button, offers undo for Psalm 46:1
+
+    // Grade Hebrews 11:1 directly, without touching Undo — this legitimately
+    // re-claims the next-due slot for Proverbs 4:23, the only verse still due.
+    await page.click('.card .open:has-text("Hebrews 11:1")');
+    await page.click('button[data-mode="recite"]');
+    await page.fill("#attempt", HEB);
+    await page.click("#check");
+    check("next due moves on to Proverbs 4:23",
+      (await page.textContent("#nextDueBtn")).includes("Proverbs 4:23"),
+      await page.textContent("#nextDueBtn"));
+
+    await page.click("#undoBtn"); // brings Psalm 46:1 back into the deck
+    check("undo does not steal the next-due slot back from the verse that legitimately claimed it",
+      (await page.textContent("#nextDueBtn")).includes("Proverbs 4:23"),
+      await page.textContent("#nextDueBtn"));
+    await ctx.close();
+  }
+
+  /* --- undoing a removal restores the verse's SM-2 schedule and practice
+     history exactly as they were, at the same position in the deck — the
+     one thing "delete and re-add by hand" could never offer --- */
+  {
+    const TWO = {
+      schema: 2,
+      verses: [
+        // Not due, so the "open on the queue" logic on load leaves the due
+        // verse below as active rather than redirecting to this one.
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: "2099-01-01" }),
+        verse({
+          ref: "Psalm 46:1", text: PSA, attempts: 5, best: 88, last: "2026-08-20",
+          recent: [72, 80, 88], ease: 2.3, reps: 3, interval: 14, due: "2020-06-01"
+        })
+      ],
+      activeId: "vPsalm461",
+      history: {}
+    };
+    const { ctx, page } = await withState(TWO);
+    const drop = page.locator(".card").filter({ hasText: "Psalm 46:1" }).locator(".drop");
+    await drop.click();
+    await drop.click(); // confirm
+    await page.click("#undoBtn");
+
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("verse-by-heart:v1")));
+    const restored = saved.verses.find(v => v.ref === "Psalm 46:1");
+    check("undo restores attempts, best, and recent scores rather than a blank slate",
+      restored && restored.attempts === 5 && restored.best === 88 && JSON.stringify(restored.recent) === JSON.stringify([72, 80, 88]),
+      JSON.stringify(restored));
+    check("undo restores the SM-2 schedule (ease/reps/interval/due) rather than resetting it",
+      restored && restored.ease === 2.3 && restored.reps === 3 && restored.interval === 14 && restored.due === "2020-06-01",
+      JSON.stringify(restored));
+    eq("the restored verse lands back at its original position in the deck",
+      saved.verses.map(v => v.ref).join(","), "Genesis 1:1,Psalm 46:1");
+    eq("a verse active when it was removed is active again once undone",
+      saved.activeId, restored.id);
     await ctx.close();
   }
 

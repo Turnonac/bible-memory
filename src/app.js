@@ -41,6 +41,7 @@
   const MASTERY_RUNS = 3;      // consecutive attempts required
   const MASTERY_SCORE = 95;    // ...at or above this score
   const STRUGGLE_SCORE = 70;   // most recent attempt below this reads as "needs work"
+  const UNDO_MS = 6000;        // window to undo a removal before it's gone for good
 
   const EASE_START = 2.5;      // SM-2's default E-Factor
   const EASE_FLOOR = 1.3;      // SM-2 never lets a verse get harder than this
@@ -71,6 +72,9 @@
                                 // card) rebuilds the form from what's been typed, not from the
                                 // unchanged verse on disk — otherwise the rebuild silently
                                 // discards whatever the reader was mid-typing
+  let pendingUndo = null;      // { verse, index, wasActive, timer } for the most recent removal —
+                                // a single slot, so removing a second verse silently forfeits the
+                                // first's undo rather than queueing several
 
   // The one case-insensitive "is this reference already in my deck" rule,
   // shared by deck sharing and add-several-at-once so the two "is this a
@@ -993,6 +997,8 @@
 
   function removeVerse(id) {
     if (state.verses.length === 1) return;
+    const index = state.verses.findIndex(v => v.id === id);
+    const verse = state.verses[index];
     const wasActive = active().id === id;
     // Removing the verse currently being recited must not leave a listener
     // running: its transcript would otherwise land on whatever verse becomes
@@ -1008,9 +1014,60 @@
     }
     // The "next due" button can point at a verse other than the active one —
     // removing that verse must not leave the button dangling on a deleted id.
-    if (id === nextDueId) {
+    const wasNextDue = id === nextDueId;
+    if (wasNextDue) {
       nextDueId = null;
       $("nextDueBtn").hidden = true;
+    }
+    save();
+    renderAll();
+    offerUndo(verse, index, wasActive, wasNextDue);
+  }
+
+  // A removal deletes real practice history (attempts, best, recent, the SM-2
+  // schedule) with no way back through the deck itself, so it gets a short
+  // grace window rather than trusting the arm-then-confirm click alone.
+  function offerUndo(verse, index, wasActive, wasNextDue) {
+    if (pendingUndo) clearTimeout(pendingUndo.timer);
+    pendingUndo = { verse: verse, index: index, wasActive: wasActive, wasNextDue: wasNextDue, timer: setTimeout(clearPendingUndo, UNDO_MS) };
+    $("undoMsg").textContent = "Removed " + verse.ref + ".";
+    $("undoBanner").hidden = false;
+    // The button the reader just clicked was just removed from the DOM —
+    // hand focus to the one control that can undo what happened to it.
+    $("undoBtn").focus();
+  }
+
+  function clearPendingUndo() {
+    if (pendingUndo) clearTimeout(pendingUndo.timer);
+    pendingUndo = null;
+    $("undoBanner").hidden = true;
+  }
+
+  function undoRemove() {
+    if (!pendingUndo) return;
+    const verse = pendingUndo.verse, wasActive = pendingUndo.wasActive, wasNextDue = pendingUndo.wasNextDue;
+    const at = Math.min(pendingUndo.index, state.verses.length);
+    clearPendingUndo();
+    state.verses.splice(at, 0, verse);
+    if (wasActive) {
+      // The verse taking over as active (state.verses[0], in removeVerse)
+      // may have picked up its own listening session in the meantime — the
+      // same reason selectVerse() always stops one before switching away.
+      endListening(false);
+      setSpeakStatus("", false);
+      state.activeId = verse.id;
+      peeked = new Set();
+      hideOrder = [];
+      $("attempt").value = "";
+      $("result").hidden = true;
+    }
+    // Only reclaim the "Next due" slot if nothing has claimed it since —
+    // grading another due verse during the grace window points it somewhere
+    // real, and restoring this verse must not steal that back.
+    if (wasNextDue && !nextDueId) {
+      nextDueId = verse.id;
+      $("nextDueBtn").hidden = false;
+      $("nextDueBtn").textContent = "Next due: " + verse.ref + " →";
     }
     save();
     renderAll();
@@ -1566,6 +1623,8 @@
     $("shareImport").hidden = true;
     renderAll();
   });
+
+  $("undoBtn").addEventListener("click", undoRemove);
 
   $("shareImportDismiss").addEventListener("click", () => {
     clearShareHash();

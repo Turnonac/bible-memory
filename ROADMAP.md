@@ -39,6 +39,44 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Undo a verse removal. Both **Now** and **Next** were empty tonight, so
+  proposed my own item. Removing a verse permanently threw away real,
+  irreplaceable practice history (attempts, best, recent scores, the whole
+  SM-2 schedule) with no way back except a prior export file — the
+  arm-then-confirm click guards against a stray tap, but not against a
+  deliberate removal the reader immediately regrets. A madder-rail banner
+  (the same "something is waiting on the reader" idiom as the review queue
+  and the shared-deck import banner) now offers "Undo" for six seconds after
+  every removal, naming the verse removed; undoing splices it back into
+  `state.verses` at its exact original position with every field untouched —
+  the one thing "delete and re-add by hand" could never offer. A single
+  pending slot by design: removing a second verse before touching Undo
+  silently forfeits the first's offer rather than queueing several, and the
+  banner replaces the message rather than stacking. Self-review
+  (`code-review` skill) caught two real bugs before shipping, both in the
+  "restore exactly what was there" half of the feature: (1) when the removed
+  verse had been active, undo switched `state.activeId` back to it without
+  first stopping a listening session the verse that took over in the
+  meantime (`state.verses[0]`) could have started — the same reason
+  `selectVerse()` and `removeVerse()` itself always call `endListening()`
+  before changing which verse is active; unfixed, a stray transcript spoken
+  for the stand-in verse would eventually grade against whichever verse was
+  active when the recognizer's async `onend` finally fired. (2) undoing a
+  verse that had been the "Next due" button's target didn't restore the
+  button, and a naive fix would have unconditionally reclaimed the slot even
+  if another verse graded during the six-second window had since legitimately
+  claimed it — fixed to restore the button only when nothing else has taken
+  it since. Mutation-tested all three fixes (the single-slot supersession,
+  the stopped-listener fix, and the next-due guard) by reverting each in turn
+  and confirming the dedicated test fails; the listener regression in
+  particular hangs the whole suite rather than failing a single assertion,
+  which is itself informative about how badly a stuck recognizer session
+  degrades the page. `npm test`: 1 build + 113 KJV + 365 UI (up from 340, 25
+  new checks) — 479 total. Verified in the harness (real Chromium) in both
+  themes at 1100px and 390px: the banner sits between the search/sort row and
+  the deck grid, wraps its button under the message at the narrow width
+  exactly like the review queue's own button already does, and stays legible
+  in dark mode. *(2026-09-05)*
 - [x] "Needs work" deck filter. Both **Now** and **Next** were empty tonight,
   so proposed my own item — the natural next use of `v.recent`, the field
   the previous night's sparkline first surfaced but only ever showed, never
