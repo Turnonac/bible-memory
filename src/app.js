@@ -1040,6 +1040,11 @@
   function clearPendingUndo() {
     if (pendingUndo) clearTimeout(pendingUndo.timer);
     pendingUndo = null;
+    // Hiding the banner while focus is still on its own Undo button (a
+    // keyboard user who tabbed there, or the six-second timeout firing
+    // before anyone acts) would otherwise drop focus off the accessibility
+    // tree entirely — move it to a control that isn't about to disappear.
+    if ($("undoBanner").contains(document.activeElement)) $("deckSearch").focus();
     $("undoBanner").hidden = true;
   }
 

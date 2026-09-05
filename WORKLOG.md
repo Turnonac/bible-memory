@@ -81,6 +81,28 @@ an Undo click or the six-second timeout.
 
 Republished the Artifact in place with this run's `index.html`.
 
+**Addendum:** CodeRabbit's automated review on the PR caught two real issues
+this self-review missed. First, `test/ui.mjs`'s own focus-after-removal
+check used `check()` with a bare truthy condition instead of `eq()` against
+`"undoBtn"` — passing for *any* non-empty focused element id, not
+specifically the Undo button, so a real focus regression could slip past
+it. Second, `offerUndo()` focuses `#undoBtn` when the banner appears, but
+neither the six-second timeout nor a click on Undo itself moved focus away
+before hiding the banner — a keyboard user who left focus there (or simply
+never touched it before the timer fired) would have focus silently drop
+off the accessibility tree once `[hidden]` pulled it out. Fixed
+`clearPendingUndo()` to move focus to `#deckSearch` first when it's about
+to hide something still focused, covering both paths through the one
+function both already run through. Tightened the test and added a
+dedicated one for the timeout path; mutation-tested by reverting the fix,
+which failed the new check exactly as expected. (CodeRabbit's third
+finding — that the worklog entry above misstated the Artifact's
+publication status — was accurate against the PR description at the time
+it ran, but not against this file: the entry above already said
+"republished," correctly, before the review posted. No code or worklog
+change was needed for that one.) `npm test`: 1 build + 113 KJV + 367 UI
+(2 more) — 481 total.
+
 ## 2026-09-03 — a "Needs work" deck filter
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

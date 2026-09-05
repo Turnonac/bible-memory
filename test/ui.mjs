@@ -373,7 +373,7 @@ for (const scheme of ["light", "dark"]) {
   check("the undo banner names the verse just removed",
     (await page.textContent("#undoMsg")).includes("Undo Test 1:1"),
     await page.textContent("#undoMsg"));
-  check("the just-removed card's control is gone, so focus moves to Undo instead of vanishing",
+  eq("the just-removed card's control is gone, so focus moves to Undo instead of vanishing",
     await page.evaluate(() => document.activeElement && document.activeElement.id), "undoBtn");
 
   await page.click("#undoBtn");
@@ -406,8 +406,13 @@ for (const scheme of ["light", "dark"]) {
   await drop.click();
   await drop.click();
   check("the undo offer is showing right after a removal", await page.isVisible("#undoBanner"));
+  eq("...with focus on its Undo button", await page.evaluate(() => document.activeElement && document.activeElement.id), "undoBtn");
   await page.waitForTimeout(6200);
   check("...and is gone on its own after the grace window", !(await page.isVisible("#undoBanner")));
+  // Hiding it out from under a focus that never moved must not strand
+  // keyboard focus off the accessibility tree.
+  eq("focus lands somewhere still visible, not on the just-hidden button",
+    await page.evaluate(() => document.activeElement && document.activeElement.id), "deckSearch");
 
   await ctx.close();
 }
