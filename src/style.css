@@ -537,6 +537,27 @@
     .share-import-actions { margin-left: 0; width: 100%; }
   }
 
+  /* ---------- undo-remove banner — same madder-rail idiom as the review
+     queue and the shared-deck import banner: a rail means something is
+     waiting on the reader, here a removal that's still reversible. ---------- */
+  .undo {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .5rem 1rem;
+    margin: 0 0 1.25rem;
+    padding: .7rem 1.1rem;
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    box-shadow: inset 3px 0 0 var(--madder);
+  }
+  .undo-text { font-size: .8125rem; color: var(--ink-soft); }
+  .undo .btn { margin-left: auto; }
+  @media (max-width: 460px) {
+    .undo .btn { margin-left: 0; width: 100%; }
+  }
+
   .nextup {
     margin: .85rem 0 0;
     font-family: var(--mono);

@@ -3,6 +3,106 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-05 — undo a verse removal
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (454 total: 1 build + 113 KJV + 340 UI),
+and `ROADMAP.md`'s **Now** and **Next** were both empty, so — per the
+working agreement — proposed my own item.
+
+Removing a verse (the "remove" → "remove?" arm-then-confirm control on
+every card) was the one destructive, permanent action left in the app with
+no way back through the UI itself — unlike editing (2026-08-28), which
+keeps the same `id` and all its history, delete-and-you're-done throws away
+real practice data: attempts, best, recent scores, and the whole SM-2
+schedule (`ease`/`reps`/`interval`/`due`). The arm-then-confirm click
+guards a stray tap, but not a deliberate removal the reader immediately
+regrets — and CLAUDE.md's own emphasis on the schedule as something worth
+protecting (the "only a due review moves the schedule" invariant, the
+storage migration path) made this feel like a real gap rather than
+invented scope.
+
+A `.undo` banner — same madder-rail "something is waiting on the reader"
+idiom already established by the review queue and the shared-deck import
+banner, so no new visual language — sits between the deck's search/sort row
+and the card grid, hidden until a removal happens. It names the verse just
+removed and offers "Undo" for six seconds (`UNDO_MS`); undoing splices the
+exact same verse object back into `state.verses` at its original index,
+restoring the schedule and history by construction rather than by copying
+fields. Deliberately a single pending slot: `offerUndo()` clears and
+replaces any earlier pending removal, so removing a second verse before
+touching Undo silently forfeits the first's offer. `[hidden]` toggling
+throughout, per the trap CLAUDE.md already names for the "Mastered" seal.
+
+**Self-review (`code-review` skill) caught two real bugs**, both about
+restoring exactly what was there when the removed verse had also been the
+*active* one:
+
+1. `undoRemove()` switched `state.activeId` back to the restored verse
+   without first stopping a listening session the stand-in verse
+   (`state.verses[0]`, whatever took over when the original was removed)
+   could have started in the six-second window — every other place that
+   changes `activeId` (`selectVerse()`, and `removeVerse()` itself)
+   already calls `endListening(false)` first, for exactly the reason
+   named in `removeVerse()`'s own comment: a transcript spoken for one
+   verse must not silently grade against whatever's active once the
+   recognizer's async `onend` finally fires. Fixed by calling
+   `endListening(false)`/`setSpeakStatus("", false)` before switching
+   `activeId` back, mirroring the existing pattern instead of inventing a
+   new one.
+2. Undoing a verse that had been the "Next due" button's target didn't
+   restore the button at all (the field wasn't even being carried through
+   `pendingUndo`). The obvious fix — always reclaim the slot — would have
+   introduced a second bug: grading a different due verse during the
+   six-second window legitimately reassigns `nextDueId` to whatever's next,
+   and undo blindly overwriting that back to the just-restored verse would
+   silently steal the slot from a target that's still genuinely more due.
+   Fixed by carrying `wasNextDue` through `pendingUndo` and only reclaiming
+   the button when nothing else has claimed `nextDueId` since.
+
+Mutation-tested all three load-bearing pieces by reverting each and
+confirming the dedicated test catches it: dropping the `clearTimeout`/
+overwrite in `offerUndo()` (single-slot supersession) broke the deck-and-
+storage suite catastrophically enough to hang a later `.click()` on a card
+that mutation left the DOM without; removing the `endListening()` call
+before restoring `activeId` didn't fail a single assertion but hung the
+*entire* run — `#speakBtn` never reverts to "Speak it" because nothing
+ever stops the stray recognizer, which is itself a useful data point about
+how badly this bug would have degraded the real page, not just the test;
+loosening the next-due guard back to unconditional reclaim broke exactly
+the one test written to catch it. `npm test`: 1 build + 113 KJV + 365 UI
+(up from 340, 25 new checks) — 479 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and
+390px: the banner appears in the right place, wraps its button under the
+message at the narrow width the same way the review queue's own button
+already does, stays legible in dark mode, and disappears cleanly on either
+an Undo click or the six-second timeout.
+
+Republished the Artifact in place with this run's `index.html`.
+
+**Addendum:** CodeRabbit's automated review on the PR caught two real issues
+this self-review missed. First, `test/ui.mjs`'s own focus-after-removal
+check used `check()` with a bare truthy condition instead of `eq()` against
+`"undoBtn"` — passing for *any* non-empty focused element id, not
+specifically the Undo button, so a real focus regression could slip past
+it. Second, `offerUndo()` focuses `#undoBtn` when the banner appears, but
+neither the six-second timeout nor a click on Undo itself moved focus away
+before hiding the banner — a keyboard user who left focus there (or simply
+never touched it before the timer fired) would have focus silently drop
+off the accessibility tree once `[hidden]` pulled it out. Fixed
+`clearPendingUndo()` to move focus to `#deckSearch` first when it's about
+to hide something still focused, covering both paths through the one
+function both already run through. Tightened the test and added a
+dedicated one for the timeout path; mutation-tested by reverting the fix,
+which failed the new check exactly as expected. (CodeRabbit's third
+finding — that the worklog entry above misstated the Artifact's
+publication status — was accurate against the PR description at the time
+it ran, but not against this file: the entry above already said
+"republished," correctly, before the review posted. No code or worklog
+change was needed for that one.) `npm test`: 1 build + 113 KJV + 367 UI
+(2 more) — 481 total.
+
 ## 2026-09-03 — a "Needs work" deck filter
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned
