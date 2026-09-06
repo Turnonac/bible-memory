@@ -70,16 +70,50 @@ true canon order (Genesis 1:1, Joshua 1:9, Psalm 23:1-3, Psalm 46:1, Psalm
 119:105, Proverbs 3:5-6, …), and no page errors are raised in either theme
 or viewport.
 
-**Deliberately not done:** the five one-chapter books (Jude, Obadiah,
-Philemon, 2 John, 3 John), which are conventionally cited by verse rather
-than chapter (e.g. "Jude 3"), get read as if that number were the chapter —
-correct enough to place them in the right book overall, but not truly
-chapter-1-verse-N within that book. Fixing it precisely would mean
-hardcoding those five book names in `canonKey()` (the actual disambiguation
-`lookupReference()` uses depends on the decompressed KJV index, which isn't
-available synchronously where sorting runs) for a discrepancy that only
-ever affects ordering *within* one of five single-chapter books relative to
-each other — noted in a comment on `canonKey()` rather than built around.
+**Originally flagged as a deliberate gap, then fixed the same night —
+CodeRabbit's PR review called this correctly.** The first version shipped
+with a known limitation: the five one-chapter books (Jude, Obadiah,
+Philemon, 2 John, 3 John), conventionally cited by verse rather than
+chapter ("Jude 3"), were read as if that number were the chapter. The PR
+description reasoned this was an acceptable simplification — "correct
+enough to place them in the right book overall" — because fixing it
+precisely would mean hardcoding those five book names, when the real
+disambiguation `lookupReference()` uses depends on the decompressed KJV
+index, unavailable synchronously where sorting runs.
+
+CodeRabbit's review (flagged 🟡 Minor, "Quick win") pointed out the actual
+consequence: mixed against an *explicit* citation for the same book — "Jude
+1:4" alongside the shorthand "Jude 3" — the naive reading sorts "Jude 3"
+*after* "Jude 1:4", a fictitious "chapter 3" outranking the real chapter 1,
+when verse 3 must come before verse 4. That's not a cosmetic rounding
+error, it's backwards ordering within a single book whenever both citation
+styles appear in the same deck — plausible, since "Add by reference" itself
+produces the shorthand form via `lookupReference()`'s own single-chapter
+special case, while a hand-typed or edited reference could easily use the
+explicit form for the same verse.
+
+Re-examined the reasoning that led to skipping this: the five single-chapter
+books aren't data that needs verifying against the decompressed KJV text at
+all — which books have only one chapter is a fixed structural fact about
+the canon, unlike the *lookup* path's own reason for consulting the index
+(confirming a verse actually exists at a given reference). Hardcoding
+`SINGLE_CHAPTER_BOOKS` in `canonKey()` was the right call after all, not the
+workaround the original reasoning assumed it would be. Fixed by normalizing
+a bare-number citation for one of those five books to chapter 1, verse N
+before building the sort key — the same reading `lookupReference()` already
+applies via its own (async, index-based) special case, just reached
+synchronously here via the hardcoded set instead.
+
+Added the regression case CodeRabbit's finding named directly: "Jude 1:4"
+and "Jude 3" in the same fixture, asserting the shorthand sorts first.
+Mutation-tested by reverting just the normalization block (keeping the new
+`SINGLE_CHAPTER_BOOKS` constant unused): the new check failed with exactly
+the backwards order CodeRabbit predicted (`Jude 1:4, Jude 3` instead of
+`Jude 3, Jude 1:4`); restored and confirmed 368/368 again. `npm test`: 1
+build + 113 KJV + 368 UI — 482 total, same count as before since this
+replaced the earlier (now-fixed) test's fixture rather than adding a
+separate one. Replied on the review thread with the fix commit and resolved
+it.
 
 Republished the Artifact in place with this run's `index.html`.
 

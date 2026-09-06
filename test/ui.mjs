@@ -2444,6 +2444,16 @@ const installGatedLookup = () => {
         // must fall in after every reference that does parse, not crash or
         // vanish from the sorted list.
         verse({ ref: "My own reminder", text: "A note to myself, not scripture.",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        // Jude has only one chapter, so its conventional bare-number citation
+        // ("Jude 3") actually names a verse, not a chapter. Mixed against an
+        // explicit "Jude 1:4" for the same book, a naive reading (chapter=3
+        // for the shorthand) would sort "Jude 3" *after* "Jude 1:4" — a
+        // fictitious chapter 3 outranking the real chapter 1 — when verse 3
+        // must come before verse 4.
+        verse({ ref: "Jude 1:4", text: "Ungodly men, turning the grace of our God into lasciviousness.",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        verse({ ref: "Jude 3", text: "It was needful for me to write unto you.",
                 ease: 2.5, reps: 0, interval: 0, due: null })
       ],
       activeId: "vActs11",
@@ -2453,8 +2463,8 @@ const installGatedLookup = () => {
     const refs = async () => (await page.$$eval(".card .ref .open", ns => ns.map(n => n.textContent))).join(", ");
 
     await page.selectOption("#deckSort", "canon");
-    eq("canon order puts an Old Testament book before a New Testament one despite the alphabet, orders chapters numerically, and puts an unparseable reference last",
-      await refs(), "Psalm 9:1, Psalm 10:1, Amos 5:24, Acts 1:1, My own reminder");
+    eq("canon order puts an Old Testament book before a New Testament one despite the alphabet, orders chapters numerically, puts an unparseable reference last, and reads a one-chapter book's bare-number shorthand as the verse it actually cites",
+      await refs(), "Psalm 9:1, Psalm 10:1, Amos 5:24, Acts 1:1, Jude 3, Jude 1:4, My own reminder");
 
     await ctx.close();
   }
