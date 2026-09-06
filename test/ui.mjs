@@ -2419,6 +2419,46 @@ const installGatedLookup = () => {
     await ctx.close();
   }
 
+  /* --- "Canon order" places a verse by its real position in the 66-book
+     canon, not the alphabet or a plain string compare on chapter numbers --- */
+  {
+    const CANON = {
+      schema: 2,
+      verses: [
+        // "Acts" sorts before "Amos" alphabetically ("Ac" < "Am"), but Amos
+        // (Old Testament, book 30) canonically precedes Acts (New Testament,
+        // book 44) — the case A-Z gets backwards and canon order must not.
+        verse({ ref: "Acts 1:1", text: "The former treatise have I made.",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        verse({ ref: "Amos 5:24", text: "Let judgment run down as waters.",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        // "Psalm 10:1" sorts before "Psalm 9:1" under a plain string compare
+        // ('1' < '9'), but chapter 9 comes before chapter 10 — canon order
+        // has to read the chapter as a number, not text.
+        verse({ ref: "Psalm 10:1", text: "Why standest thou afar off, O LORD?",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        verse({ ref: "Psalm 9:1", text: "I will praise thee, O LORD, with my whole heart.",
+                ease: 2.5, reps: 0, interval: 0, due: null }),
+        // No chapter or verse number at all — doesn't parse as "Book
+        // chapter[:verse]" — so there's nowhere in the canon to place it; it
+        // must fall in after every reference that does parse, not crash or
+        // vanish from the sorted list.
+        verse({ ref: "My own reminder", text: "A note to myself, not scripture.",
+                ease: 2.5, reps: 0, interval: 0, due: null })
+      ],
+      activeId: "vActs11",
+      history: {}
+    };
+    const { ctx, page } = await withState(CANON);
+    const refs = async () => (await page.$$eval(".card .ref .open", ns => ns.map(n => n.textContent))).join(", ");
+
+    await page.selectOption("#deckSort", "canon");
+    eq("canon order puts an Old Testament book before a New Testament one despite the alphabet, orders chapters numerically, and puts an unparseable reference last",
+      await refs(), "Psalm 9:1, Psalm 10:1, Amos 5:24, Acts 1:1, My own reminder");
+
+    await ctx.close();
+  }
+
   /* --- highlight matching is regex-safe and length-safe, not just case-insensitive --- */
   {
     const EDGE = {

@@ -39,6 +39,39 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] "Canon order" deck sort. Both **Now** and **Next** were empty tonight,
+  so proposed my own item. The 2026-08-26 sort feature's own worklog entry
+  named this explicitly as a gap it wasn't closing: "A–Z sorts the reference
+  text itself, not canonical book order... building real canon ordering
+  would mean threading the `kjv-data.js` book list into a path that today
+  has none of that machinery." That machinery has existed since "Add any
+  verse by reference" (2026-08-18) — `KJV_BOOKS` is a plain, synchronous
+  66-book array already used by `resolveBook()` for the "Add by reference"
+  lookup — so the blocker the earlier entry described no longer holds. A
+  fourth `#deckSort` option, "Canon order," sorts by the same
+  `parseReference()`/`resolveBook()` pair that lookup already uses to make
+  sense of a typed reference: book position in `KJV_BOOKS`, then chapter and
+  verse read as numbers, not text. A reference that doesn't parse as "Book
+  chapter[:verse]" (a custom note with no numeral in it, say) sorts after
+  every canonical one rather than erroring or vanishing, tied among
+  themselves by the same reference-text order "A–Z" already uses for its own
+  ties. View state only, like the other three sort/filter facets — no
+  `SCHEMA` bump, no `migrate()` branch. Self-review (`code-review` skill)
+  found no defects. Mutation-tested by deleting the new sort branch entirely:
+  the dedicated test failed exactly as expected (fell back to insertion
+  order); restored and confirmed 368/368 again. The first version of the new
+  test's own expected order was wrong, not the code — it asserted Amos
+  before Psalms, but Psalms (book 19) genuinely precedes Amos (book 30) in
+  the real canon, and the harness caught that mistake immediately by
+  disagreeing with it. `npm test`: 1 build + 113 KJV + 368 UI (up from 367,
+  1 new check covering three distinct claims at once: an Old Testament book
+  before a New Testament one despite the alphabet disagreeing, chapters
+  compared numerically rather than as text, and an unparseable reference
+  landing last rather than erroring). Verified in the harness (real
+  Chromium) in both themes at 1100px and 390px: the new option reads
+  correctly in the select, selecting it visibly reorders the starter deck
+  into true canon order (Genesis, Joshua, Psalm 23, Psalm 46, Psalm 119,
+  Proverbs, …), and no page errors are raised. *(2026-09-06)*
 - [x] Undo a verse removal. Both **Now** and **Next** were empty tonight, so
   proposed my own item. Removing a verse permanently threw away real,
   irreplaceable practice history (attempts, best, recent scores, the whole
