@@ -69,8 +69,11 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
   `undo()`'s kind-dispatch to always call `undoRemove()` broke all four
   tests covering a reset's own undo and the cross-kind slot-supersession in
   both directions. Restored both and confirmed 388/388 again each time.
-  `npm test`: 1 build + 113 KJV + 388 UI (up from 368, 20 new checks) — 502
-  total. Verified in the harness (real Chromium) in both themes at 1100px
+  `npm test`: 1 build + 113 KJV + 390 UI (up from 368, 22 new checks) — 504
+  total (includes a CodeRabbit-caught fix: resetting the active verse mid-
+  listen didn't stop the recognizer, so a stray transcript could silently
+  re-grade a verse moments after its history was wiped — see WORKLOG for
+  detail). Verified in the harness (real Chromium) in both themes at 1100px
   and 390px: the control reads "reset" then arms to "reset?" in the orpiment
   gold already used for "near miss," a confirmed reset flips the card to
   "not yet recited" and a due badge immediately, and the undo banner names

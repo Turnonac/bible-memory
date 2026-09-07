@@ -1475,6 +1475,41 @@ const installGatedLookup = () => {
 }
 
 {
+  // Same class of bug once more: resetting the active verse's history must
+  // also stop a running listener, or its eventual onend hands runCheck() a
+  // transcript to grade against the verse whose attempts/schedule the reset
+  // just wiped — silently reintroducing the very attempt the reader just
+  // asked to remove. CodeRabbit's review on this PR caught this before it
+  // shipped (self-review had not).
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Philippians 4:13")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", "I can do all things through Christ which strengtheneth me.");
+  await page.click("#check"); // give it a real attempt to reset
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "some words spoken before the reset");
+
+  const reset = page.locator(".card").filter({ hasText: "Philippians 4:13" }).locator(".reset-progress");
+  await reset.click();
+  await reset.click(); // confirm
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+
+  const attemptsOf3 = () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Philippians 4:13")?.attempts);
+  eq("resetting the active verse mid-listen discards the stale transcript instead of grading it",
+    await attemptsOf3(), 0);
+  check("no bogus grade silently reintroduces the attempt the reset just removed",
+    await page.isHidden("#result"));
+  await ctx.close();
+}
+
+{
   // Every recognition event overwrites the recall box with the transcript so
   // far; read-only while listening stops that from silently discarding a
   // manual edit typed into the same field mid-session.

@@ -82,6 +82,41 @@ names the verse and restores its exact score and due state on Undo.
 
 Republished the Artifact in place with this run's `index.html`.
 
+**Addendum, same night — CodeRabbit's review on the PR caught a real bug this
+self-review missed, and raised one finding that doesn't apply.** The real
+one: `resetVerse()` cleared the active verse's recite textarea and result
+panel but never called `endListening(false)`/`setSpeakStatus("", false)`
+first — every other place that changes what's showing for the active verse
+(`selectVerse()`, `removeVerse()`, `saveVerseEdit()`, `undoRemove()`) already
+stops a running "Speak it" session before doing that, for exactly the reason
+named in each of their own comments: a stray transcript's eventual `onend`
+grades via `runCheck()`'s `active()` lookup, against whatever's active by
+the time it fires. Left unfixed here, resetting the active verse while its
+microphone was still listening would let that stray transcript silently
+re-grade it moments later — reintroducing the exact attempt (and a fresh
+due date) the reset had just wiped, defeating the feature outright for
+that timing window. Fixed by adding the same two calls, mirroring the
+existing pattern rather than inventing a new one. Reproduced and
+mutation-tested directly: reverting the fix made the new regression test
+hang on `page.waitForFunction` waiting for the listener to stop — it never
+does — the same failure signature the original `removeVerse()` version of
+this bug produced, which is itself informative about how badly a stuck
+recognizer session degrades the page, not just the test. `npm test`: 1
+build + 113 KJV + 390 UI (2 more) — 504 total.
+
+The finding that doesn't apply: CodeRabbit read CLAUDE.md's "Only a due
+review moves the schedule" invariant and flagged `resetVerse()` for
+changing `ease`/`reps`/`interval`/`due` outside a due review. That invariant
+guards a specific failure mode — `runCheck()` grading a verse that isn't
+due yet must not advance the SM-2 ladder, or repeated practice on an
+already-scheduled verse would compound the interval out to weeks on every
+tap. Reset is a different mechanism entirely: a reader's explicit,
+arm-then-confirm request to discard a verse's schedule and start it over,
+which is the entire point of the feature this PR adds — "preserve these
+fields during reset" would just silently no-op the feature. Replied on the
+thread explaining the distinction rather than pushing a change that would
+have undone the PR's own purpose, and resolved it.
+
 ## 2026-09-06 — "Canon order" deck sort
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

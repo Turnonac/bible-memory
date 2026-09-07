@@ -1183,6 +1183,13 @@
     // them. The recite panel's own stale score would otherwise contradict
     // the "not yet recited" the deck card now shows for the same verse.
     if (active().id === id) {
+      // A "Speak it" session left running would keep listening against the
+      // verse whose history we just wiped; its eventual transcript would
+      // otherwise grade via runCheck()'s active() lookup and silently
+      // reintroduce the attempt this reset just removed — the same reason
+      // selectVerse()/removeVerse()/saveVerseEdit() all stop one first.
+      endListening(false);
+      setSpeakStatus("", false);
       $("attempt").value = "";
       $("result").hidden = true;
     }
