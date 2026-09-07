@@ -1078,6 +1078,7 @@
       <select id="deckSort">
         <option value="added">Deck order</option>
         <option value="due">Due soonest</option>
+        <option value="canon">Canon order</option>
         <option value="az">A&ndash;Z</option>
       </select>
       <span class="caption" id="deckSearchCount" aria-live="polite"></span>
@@ -1787,16 +1788,59 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     return svg;
   }
 
+  // Jude, Obadiah, Philemon, 2 John, and 3 John have only one chapter, so
+  // their conventional citation ("Jude 3") gives a verse number, not a
+  // chapter — the same fact lookupReference() reads off the decompressed KJV
+  // index (via "no chapter 2" for the book) when resolving a typed
+  // reference. That index isn't available synchronously where sorting runs,
+  // but which five books these are isn't data that needs verifying against
+  // the text in the first place — it's a fixed structural fact about the
+  // canon — so canonKey() below just names them directly.
+  const SINGLE_CHAPTER_BOOKS = new Set(["Obadiah", "Philemon", "2 John", "3 John", "Jude"]);
+
+  // Where a reference falls in the 66-book canon, for "Canon order" below.
+  // KJV_BOOKS (src/kjv-data.js) already holds that book sequence for the
+  // reference lookup elsewhere in this file, so this needs no lookup of its
+  // own — just the same parseReference()/resolveBook() "Add by reference"
+  // already uses to make sense of a typed reference. A reference that
+  // doesn't parse as "Book chapter[:verse]" (a custom verse with no numeric
+  // reference, say) or names no real book sorts after every canonical one —
+  // there's nowhere in the canon to place it — tied by reference text among
+  // themselves, the same fallback "az" already uses for *its* ties.
+  function canonKey(v) {
+    const parsed = parseReference(v.ref);
+    const book = parsed && resolveBook(parsed.book);
+    let chapter = parsed ? parsed.chapter : 0;
+    let verse = parsed && parsed.from !== null ? parsed.from : 0;
+    // A bare "Jude 3" parses with chapter=3, verse=0 — normalize it to
+    // chapter 1, verse 3 (what it actually cites) so it sorts correctly
+    // against an explicit "Jude 1:4" for the same book, rather than a
+    // fictitious "chapter 3" outranking a real chapter 1.
+    if (parsed && book && parsed.from === null && SINGLE_CHAPTER_BOOKS.has(book)) {
+      verse = chapter;
+      chapter = 1;
+    }
+    return [book ? KJV_BOOKS.indexOf(book) : KJV_BOOKS.length, chapter, verse];
+  }
+
   // "added" is a no-op — state.verses is already insertion order, since every
   // add appends. "due" groups overdue-or-unstarted verses before scheduled
   // ones, same rule dueVerses() sorts the review queue by (real dates before
   // the null-due sentinel), so a verse reads "due" in the same relative spot
   // here as it does up in the queue. "az" sorts the reference text itself,
-  // not canonical book order — this is a search aid, not a Bible index.
+  // not canonical book order — a search aid, not a Bible index; "canon" is
+  // that Bible-index ordering, via canonKey() above.
   function sortDeck(list, sortKey) {
     if (sortKey === "due") {
       const key = v => (isDue(v) ? "0:" : "1:") + (v.due || "9999-12-31");
       return list.slice().sort((a, b) => key(a).localeCompare(key(b)));
+    }
+    if (sortKey === "canon") {
+      return list.slice().sort((a, b) => {
+        const ka = canonKey(a), kb = canonKey(b);
+        return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2] ||
+          a.ref.localeCompare(b.ref, undefined, { sensitivity: "base" });
+      });
     }
     if (sortKey === "az") {
       return list.slice().sort((a, b) => a.ref.localeCompare(b.ref, undefined, { sensitivity: "base" }));

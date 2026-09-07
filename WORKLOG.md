@@ -3,6 +3,120 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-06 — "Canon order" deck sort
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (481 total: 1 build + 113 KJV + 367 UI),
+and `ROADMAP.md`'s **Now** and **Next** were both empty, so — per the
+working agreement — proposed my own item.
+
+The 2026-08-26 sort feature (Deck order / Due soonest / A–Z) explicitly
+named canonical book ordering as out of scope that night: "building real
+canon ordering would mean threading the `kjv-data.js` book list into a path
+that today has none of that machinery." Reading `src/app.js` end to end
+tonight showed that blocker no longer holds — "Add any verse by reference"
+(2026-08-18) already threads exactly that: `KJV_BOOKS` is a plain,
+synchronous 66-book array (from `src/kjv-data.js`, concatenated ahead of
+`app.js` at build time) that `resolveBook()` already uses to validate a
+typed reference before looking it up. Sorting by canon position needed no
+new machinery at all, just reusing what "Add by reference" already built.
+
+A fourth `#deckSort` option, "Canon order," sorts every verse by
+`parseReference()`/`resolveBook()` — the same pair "Add by reference"
+already uses to make sense of a typed reference — first by the book's index
+in `KJV_BOOKS`, then chapter and verse read as numbers. A reference that
+doesn't parse as "Book chapter[:verse]" at all (a custom note with no
+numeral in it) sorts after every canonical one instead of erroring or
+disappearing from the list, tied among themselves by the same
+reference-text order "A–Z" already falls back on for its own ties. Pure
+view state, like the three existing sort/filter facets — no `SCHEMA` bump,
+no `migrate()` branch, since this reads the same `ref` string already on
+every verse.
+
+Self-review (`code-review` skill) found no defects — traced the forward
+reference from `canonKey()` (defined near `sortDeck`) to `parseReference()`/
+`resolveBook()` (defined later in the file, under "Verse lookup") and
+confirmed both are ordinary `function` declarations, safely hoisted within
+the enclosing IIFE regardless of source order, the same pattern the rest of
+the file already relies on throughout.
+
+**The one thing that needed fixing tonight was the test I wrote, not the
+code.** The first version of the new regression test asserted Amos 5:24
+should sort before Psalm 9:1/10:1 in canon order — plausible-sounding, but
+wrong: Psalms is book 19 of the 66, Amos is book 30, so Psalms genuinely
+precedes Amos in the real canon. Running the suite caught the mistake
+immediately (`expected "Amos 5:24, Psalm 9:1, ...", got "Psalm 9:1, Psalm
+10:1, Amos 5:24, ..."`) — worth recording since it's a clean example of the
+test suite doing its job against the test itself, not just the feature.
+Fixed the expected string, not the code. The corrected test still proves
+three distinct claims at once, each of which a plausible-but-wrong
+implementation could get wrong independently: an Old Testament book (Amos)
+sorting before a New Testament one (Acts) despite "Acts" < "Amos"
+alphabetically; chapter numbers compared numerically rather than as text
+(so "Psalm 9:1" sorts before "Psalm 10:1", not after, the way a plain string
+compare would put it); and a reference with no chapter or verse number at
+all ("My own reminder") landing last rather than crashing or vanishing.
+Mutation-tested by deleting the new `sortKey === "canon"` branch from
+`sortDeck()` entirely: the dedicated test failed exactly as expected
+(fell back silently to insertion order, since `#deckSort`'s `<option>`
+still existed in the markup and nothing validates its value against a known
+set); restored and confirmed 368/368 again.
+
+`npm test`: 1 build + 113 KJV + 368 UI (up from 367, 1 new check) — 482
+total. Verified in the harness (real Chromium) in both themes at 1100px and
+390px: the new "Canon order" option reads correctly in the select in both
+color schemes, selecting it visibly reorders the 28-verse starter deck into
+true canon order (Genesis 1:1, Joshua 1:9, Psalm 23:1-3, Psalm 46:1, Psalm
+119:105, Proverbs 3:5-6, …), and no page errors are raised in either theme
+or viewport.
+
+**Originally flagged as a deliberate gap, then fixed the same night —
+CodeRabbit's PR review called this correctly.** The first version shipped
+with a known limitation: the five one-chapter books (Jude, Obadiah,
+Philemon, 2 John, 3 John), conventionally cited by verse rather than
+chapter ("Jude 3"), were read as if that number were the chapter. The PR
+description reasoned this was an acceptable simplification — "correct
+enough to place them in the right book overall" — because fixing it
+precisely would mean hardcoding those five book names, when the real
+disambiguation `lookupReference()` uses depends on the decompressed KJV
+index, unavailable synchronously where sorting runs.
+
+CodeRabbit's review (flagged 🟡 Minor, "Quick win") pointed out the actual
+consequence: mixed against an *explicit* citation for the same book — "Jude
+1:4" alongside the shorthand "Jude 3" — the naive reading sorts "Jude 3"
+*after* "Jude 1:4", a fictitious "chapter 3" outranking the real chapter 1,
+when verse 3 must come before verse 4. That's not a cosmetic rounding
+error, it's backwards ordering within a single book whenever both citation
+styles appear in the same deck — plausible, since "Add by reference" itself
+produces the shorthand form via `lookupReference()`'s own single-chapter
+special case, while a hand-typed or edited reference could easily use the
+explicit form for the same verse.
+
+Re-examined the reasoning that led to skipping this: the five single-chapter
+books aren't data that needs verifying against the decompressed KJV text at
+all — which books have only one chapter is a fixed structural fact about
+the canon, unlike the *lookup* path's own reason for consulting the index
+(confirming a verse actually exists at a given reference). Hardcoding
+`SINGLE_CHAPTER_BOOKS` in `canonKey()` was the right call after all, not the
+workaround the original reasoning assumed it would be. Fixed by normalizing
+a bare-number citation for one of those five books to chapter 1, verse N
+before building the sort key — the same reading `lookupReference()` already
+applies via its own (async, index-based) special case, just reached
+synchronously here via the hardcoded set instead.
+
+Added the regression case CodeRabbit's finding named directly: "Jude 1:4"
+and "Jude 3" in the same fixture, asserting the shorthand sorts first.
+Mutation-tested by reverting just the normalization block (keeping the new
+`SINGLE_CHAPTER_BOOKS` constant unused): the new check failed with exactly
+the backwards order CodeRabbit predicted (`Jude 1:4, Jude 3` instead of
+`Jude 3, Jude 1:4`); restored and confirmed 368/368 again. `npm test`: 1
+build + 113 KJV + 368 UI — 482 total, same count as before since this
+replaced the earlier (now-fixed) test's fixture rather than adding a
+separate one. Replied on the review thread with the fix commit and resolved
+it.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-05 — undo a verse removal
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned
