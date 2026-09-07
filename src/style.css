@@ -759,6 +759,7 @@
   }
   .card .stat .stat-actions { display: flex; gap: .65rem; }
   .card .stat .edit,
+  .card .stat .reset-progress,
   .card .stat .drop {
     position: relative;
     z-index: 1;
@@ -768,6 +769,8 @@
     cursor: pointer;
   }
   .card .stat .edit:hover { color: var(--lapis); text-decoration: underline; }
+  .card .stat .reset-progress:hover { color: var(--orpiment); text-decoration: underline; }
+  .card .stat .reset-progress[data-armed="1"] { color: var(--orpiment); }
   .card .stat .drop:hover { color: var(--madder); text-decoration: underline; }
   .card .stat .drop[data-armed="1"] { color: var(--madder); }
 
