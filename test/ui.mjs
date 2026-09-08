@@ -417,6 +417,114 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ reset a verse's progress ==================== */
+{
+  // Reuses the same undo banner and single-pending-slot machinery as removal
+  // (same #undoBanner/#undoMsg/#undoBtn, same UNDO_MS grace window) rather
+  // than a second one, since a reset destroys the same class of irreplaceable
+  // history — attempts, best, recent scores, the whole SM-2 schedule — while
+  // deliberately keeping the verse itself, unlike removal.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  const cardFor = ref => page.locator(".card").filter({ hasText: ref });
+  const resetFor = ref => cardFor(ref).locator(".reset-progress");
+  const statFor = ref => cardFor(ref).locator(".stat span").first();
+
+  await page.click("details.add > summary");
+  await page.fill("#newRef", "Reset Test A 1:1");
+  await page.fill("#newText", "This line exists only to be scored and reset.");
+  await page.click("#addForm button[type=submit]");
+
+  check("an unscored verse offers no reset control",
+    await resetFor("Reset Test A 1:1").count() === 0);
+
+  await page.click('.card .open:has-text("Reset Test A 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", "This line exists only to be scored and reset.");
+  await page.click("#check");
+  check("a graded verse shows a result", await page.isVisible("#result"));
+  eq("...and is scored on the card", await statFor("Reset Test A 1:1").textContent(),
+    "best 100% · 1×");
+  check("...and now offers a reset control", await resetFor("Reset Test A 1:1").count() === 1);
+
+  let reset = resetFor("Reset Test A 1:1");
+  await reset.click();
+  eq("resetting asks for confirmation first", await statFor("Reset Test A 1:1").textContent(),
+    "best 100% · 1×");
+  await reset.click(); // confirm
+  eq("a confirmed reset clears the card's history", await statFor("Reset Test A 1:1").textContent(),
+    "not yet recited");
+  check("the reset control itself is gone along with the history it acted on",
+    await resetFor("Reset Test A 1:1").count() === 0);
+  check("a reset verse comes up due right away, same as a never-scheduled one",
+    await cardFor("Reset Test A 1:1").locator(".when.now").count() === 1);
+  check("the just-graded result no longer sits on screen contradicting the reset card",
+    !(await page.isVisible("#result")));
+  eq("the recall box is cleared too", await page.inputValue("#attempt"), "");
+  check("the undo banner names the verse just reset",
+    (await page.textContent("#undoMsg")).includes("Reset Test A 1:1"),
+    await page.textContent("#undoMsg"));
+
+  await page.click("#undoBtn");
+  eq("undo restores the exact score and attempt count", await statFor("Reset Test A 1:1").textContent(),
+    "best 100% · 1×");
+  check("the banner clears once the undo is used", !(await page.isVisible("#undoBanner")));
+  check("the restored due date is real again, not the reset's immediate one",
+    await cardFor("Reset Test A 1:1").locator(".when.now").count() === 0);
+
+  // A second verse, scored the same way, to check how a reset's pending undo
+  // interacts with a removal's — the "Add a verse" panel is already open
+  // from Reset Test A above.
+  await page.fill("#newRef", "Reset Test B 1:1");
+  await page.fill("#newText", "This second line is scored too, for the cross-kind check below.");
+  await page.click("#addForm button[type=submit]");
+  await page.click('.card .open:has-text("Reset Test B 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", "This second line is scored too, for the cross-kind check below.");
+  await page.click("#check");
+
+  // One pending slot shared by both kinds of undo — arming a reset on B, then
+  // removing a different verse before touching Undo, must forfeit B's reset
+  // offer exactly like a second removal forfeits an earlier one.
+  reset = resetFor("Reset Test B 1:1");
+  await reset.click();
+  await reset.click();
+  let drop = cardFor("Genesis 1:1").locator(".drop");
+  await drop.click();
+  await drop.click();
+  check("a removal after a reset supersedes the reset's pending undo",
+    (await page.textContent("#undoMsg")).includes("Genesis 1:1"),
+    await page.textContent("#undoMsg"));
+  await page.click("#undoBtn");
+  check("the removed verse comes back", await cardFor("Genesis 1:1").count() === 1);
+  eq("the superseded reset is not also silently undone",
+    await statFor("Reset Test B 1:1").textContent(), "not yet recited");
+
+  // And the reverse order: a reset after a removal supersedes the removal's
+  // pending undo, so Undo restores the score, not the removed verse.
+  drop = cardFor("Genesis 1:1").locator(".drop");
+  await drop.click();
+  await drop.click();
+  await page.click('.card .open:has-text("Reset Test B 1:1")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", "This second line is scored too, for the cross-kind check below.");
+  await page.click("#check");
+  reset = resetFor("Reset Test B 1:1");
+  await reset.click();
+  await reset.click();
+  check("a reset after a removal supersedes the removal's pending undo",
+    (await page.textContent("#undoMsg")).includes("Reset Test B 1:1"),
+    await page.textContent("#undoMsg"));
+  await page.click("#undoBtn");
+  eq("the superseded removal is not silently undone",
+    await cardFor("Genesis 1:1").count(), 0);
+  eq("the reset that actually claimed the slot is what comes back",
+    await statFor("Reset Test B 1:1").textContent(), "best 100% · 1×");
+
+  await ctx.close();
+}
+
 /* ============================ deck sharing by URL ======================== */
 let sharedHash;
 {
@@ -1362,6 +1470,41 @@ const installGatedLookup = () => {
   eq("editing the active verse mid-listen discards the stale transcript instead of grading it",
     await attemptsOf2(), 0);
   check("no bogus grade is shown for a transcript spoken against the pre-edit text",
+    await page.isHidden("#result"));
+  await ctx.close();
+}
+
+{
+  // Same class of bug once more: resetting the active verse's history must
+  // also stop a running listener, or its eventual onend hands runCheck() a
+  // transcript to grade against the verse whose attempts/schedule the reset
+  // just wiped — silently reintroducing the very attempt the reader just
+  // asked to remove. CodeRabbit's review on this PR caught this before it
+  // shipped (self-review had not).
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.addInitScript(installFakeRecognizer);
+  await page.goto(url);
+  await page.click('.card .open:has-text("Philippians 4:13")');
+  await page.click('button[data-mode="recite"]');
+  await page.fill("#attempt", "I can do all things through Christ which strengtheneth me.");
+  await page.click("#check"); // give it a real attempt to reset
+  await page.click('button[data-mode="recite"]');
+  await page.click("#speakBtn");
+  await page.evaluate(t => window.__emitFinal(t), "some words spoken before the reset");
+
+  const reset = page.locator(".card").filter({ hasText: "Philippians 4:13" }).locator(".reset-progress");
+  await reset.click();
+  await reset.click(); // confirm
+  // The session has genuinely ended once the control reverts to its idle
+  // label — a fixed sleep would race the recognizer's async onend instead.
+  await page.waitForFunction(() => document.getElementById("speakBtn").textContent === "Speak it");
+
+  const attemptsOf3 = () => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Philippians 4:13")?.attempts);
+  eq("resetting the active verse mid-listen discards the stale transcript instead of grading it",
+    await attemptsOf3(), 0);
+  check("no bogus grade silently reintroduces the attempt the reset just removed",
     await page.isHidden("#result"));
   await ctx.close();
 }

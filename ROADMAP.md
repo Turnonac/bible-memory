@@ -39,6 +39,45 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Reset a verse's progress. Both **Now** and **Next** were empty tonight,
+  so proposed my own item. Edit (2026-08-28) and undo (2026-09-05) both grew
+  out of the same gap: real practice history — attempts, best, recent scores,
+  the whole SM-2 schedule — had exactly one way to go, permanently forward,
+  short of deleting the verse outright and losing its text too. A reader
+  coming back to a verse after a long gap and wanting a genuinely fresh start
+  on it (rather than a schedule dragged down by scores from months ago) had
+  no path to that at all. A "reset" control now sits between "edit" and
+  "remove" on any card with at least one attempt (a card with none is
+  already at the state a reset would put it in, so the control doesn't
+  render there), arm-then-confirm like "remove" already is; confirming wipes
+  attempts/best/last/recent/ease/reps/interval/due back to a brand-new
+  verse's values while leaving id/ref/text/source untouched, so the verse
+  immediately comes up due again, same as one that's never been scheduled.
+  Reuses the exact undo banner "remove" already has — same `#undoBanner`,
+  same six-second grace window — rather than a second one, since a reset
+  destroys the identical class of irreplaceable history a removal does;
+  generalized the single pending-undo slot to carry either kind
+  (`{kind: "remove", ...}` or `{kind: "reset", ...}`), so the existing
+  "a second action forfeits the first's offer" rule now also holds *across*
+  the two kinds, not just within each. Self-review (`code-review` skill)
+  found no defects — traced the generalized `pendingUndo`/`armUndo`/`undo`
+  dispatch across every call site and confirmed `resetVerse()`'s wiped
+  fields match `blankVerse()`'s own defaults exactly, so a reset verse is
+  indistinguishable from a freshly-added one. Mutation-tested two ways:
+  removing the `if (v.attempts)` guard on rendering the control broke the
+  two tests that depend on it being absent/gone at zero attempts; reverting
+  `undo()`'s kind-dispatch to always call `undoRemove()` broke all four
+  tests covering a reset's own undo and the cross-kind slot-supersession in
+  both directions. Restored both and confirmed 388/388 again each time.
+  `npm test`: 1 build + 113 KJV + 390 UI (up from 368, 22 new checks) — 504
+  total (includes a CodeRabbit-caught fix: resetting the active verse mid-
+  listen didn't stop the recognizer, so a stray transcript could silently
+  re-grade a verse moments after its history was wiped — see WORKLOG for
+  detail). Verified in the harness (real Chromium) in both themes at 1100px
+  and 390px: the control reads "reset" then arms to "reset?" in the orpiment
+  gold already used for "near miss," a confirmed reset flips the card to
+  "not yet recited" and a due badge immediately, and the undo banner names
+  the verse and restores its exact score on Undo. *(2026-09-07)*
 - [x] "Canon order" deck sort. Both **Now** and **Next** were empty tonight,
   so proposed my own item. The 2026-08-26 sort feature's own worklog entry
   named this explicitly as a gap it wasn't closing: "A–Z sorts the reference
