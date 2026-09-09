@@ -69,6 +69,64 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close();
 }
 
+/* ============================ theme toggle ================================ */
+{
+  // The CSS has supported an explicit [data-theme] choice since the three-
+  // theme-states rule in CLAUDE.md — the toggle is what actually lets a
+  // reader reach it; nothing on the page ever set the attribute before.
+  const LIGHT_PAPER = [231, 232, 226]; // --paper, light
+  const DARK_PAPER = [22, 26, 24];     // --paper, dark
+  const rgbOf = async page => (await page.evaluate(() => getComputedStyle(document.body).backgroundColor))
+    .match(/\d+/g).slice(0, 3).map(Number);
+
+  // Forcing a choice must win over whatever the OS prefers, in both directions.
+  for (const [scheme, forced, expect] of [["dark", "light", LIGHT_PAPER], ["light", "dark", DARK_PAPER]]) {
+    const ctx = await browser.newContext({ colorScheme: scheme, viewport: { width: 1100, height: 900 } });
+    const page = await ctx.newPage();
+    await page.goto(url);
+    eq(`theme select defaults to "system" (OS ${scheme})`, await page.inputValue("#themeSelect"), "system");
+    check(`no data-theme attribute at the default "system" setting (OS ${scheme})`,
+      (await page.evaluate(() => document.documentElement.getAttribute("data-theme"))) === null);
+    await page.selectOption("#themeSelect", forced);
+    eq(`data-theme reflects an explicit "${forced}" choice`,
+      await page.evaluate(() => document.documentElement.getAttribute("data-theme")), forced);
+    const bg = await rgbOf(page);
+    check(`explicit "${forced}" wins over an OS preference of "${scheme}" (${bg})`, near(bg, expect, 4));
+    await ctx.close();
+  }
+
+  // A display preference, not practice history — its own localStorage key,
+  // persisted across a reload without touching (or being touched by) the deck.
+  {
+    const ctx = await browser.newContext({ colorScheme: "light", viewport: { width: 1100, height: 900 } });
+    const page = await ctx.newPage();
+    await page.goto(url);
+    await page.selectOption("#themeSelect", "dark");
+    await page.reload();
+    eq("an explicit theme choice survives a reload", await page.inputValue("#themeSelect"), "dark");
+    check("data-theme is restored on reload",
+      (await page.evaluate(() => document.documentElement.getAttribute("data-theme"))) === "dark");
+    const stored = await page.evaluate(() => localStorage.getItem("verse-by-heart:theme"));
+    eq("the theme preference lives under its own key, separate from verse progress", stored, "dark");
+    await ctx.close();
+  }
+
+  // Returning to "system" must let the OS preference actually govern again,
+  // not get stuck on whichever theme was forced most recently.
+  {
+    const ctx = await browser.newContext({ colorScheme: "dark", viewport: { width: 1100, height: 900 } });
+    const page = await ctx.newPage();
+    await page.goto(url);
+    await page.selectOption("#themeSelect", "light");
+    await page.selectOption("#themeSelect", "system");
+    check("returning to \"system\" removes the data-theme override",
+      (await page.evaluate(() => document.documentElement.getAttribute("data-theme"))) === null);
+    const bg = await rgbOf(page);
+    check(`"system" again follows the OS dark preference (${bg})`, near(bg, DARK_PAPER, 4));
+    await ctx.close();
+  }
+}
+
 /* ============================ drill mechanics =========================== */
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
@@ -2141,6 +2199,25 @@ const installGatedLookup = () => {
     await page.keyboard.press("?");
     check("typing ? into a focused field leaves the panel alone",
       !(await page.locator("#shortcuts").evaluate(el => el.open)));
+    await ctx.close();
+  }
+
+  /* --- the bare-key shortcuts don't hijack a focused <select>, including the
+     theme control — arrow keys and the mode digits are meant for native
+     option-cycling there, not stepVerse()/setMode() stealing the keystroke --- */
+  {
+    const { ctx, page } = await withState(null);
+    await page.focus("#themeSelect");
+    await page.keyboard.press("ArrowRight");
+    eq("ArrowRight on a focused select doesn't step to the next verse",
+      await page.textContent("#ref"), "Genesis 1:1");
+
+    await page.click('button[data-mode="veil"]');
+    await page.focus("#themeSelect");
+    await page.keyboard.press("1");
+    const readPressed = await page.evaluate(() =>
+      document.querySelector('.switch button[data-mode="read"]').getAttribute("aria-pressed"));
+    check("pressing 1 on a focused select doesn't switch back to Read mode", readPressed === "false");
     await ctx.close();
   }
 

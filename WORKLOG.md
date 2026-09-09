@@ -3,6 +3,72 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-09 — an explicit light/dark theme toggle
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (504 total: 1 build + 113 KJV + 390 UI),
+and `ROADMAP.md`'s **Now** and **Next** were both empty, so — per the
+working agreement — proposed my own item.
+
+Reading `CLAUDE.md`'s own invariants closely turned up a real gap rather
+than an invented one: "Three theme states, not two" documents an explicit
+`data-theme="light"`/`"dark"` choice as a state the CSS is built to
+support, and `src/style.css` has carried the full three-way token
+structure (`:root`, the `prefers-color-scheme` media query guarded
+`:not([data-theme="light"])`, and `:root[data-theme="dark"]`) since the
+very first commit. But grepping `src/app.js` and `src/markup.html` for
+`data-theme` came back empty — nothing on the page had ever set the
+attribute. The scaffolding for an override was fully built and fully
+tested at the CSS-correctness level (`test/ui.mjs`'s static check that
+every dark token has a light counterpart), but completely unreachable: a
+reader could never actually choose a theme, only ever inherit whatever the
+OS preferred.
+
+A `<select id="themeSelect">` (Match system / Light / Dark) now sits in
+the masthead, reusing the same chevron-select visual treatment
+`deckFilter`/`deckSort` already established in the deck toolbar rather
+than inventing a new control style. Selecting a theme stamps `data-theme`
+on the document root immediately — no reload — and persists it under its
+own `verse-by-heart:theme` localStorage key, deliberately separate from
+`verse-by-heart:v1`: a display preference isn't practice history, so it
+has no reason to touch `SCHEMA` or go through `migrate()`. Applied as the
+very first statement the script executes, ahead of loading the deck or
+any render, so there's no flash of the wrong palette while the rest of
+the page comes up.
+
+**Self-review (`code-review` skill) caught a real bug before shipping.**
+The page's global `keydown` handler — arrow keys step between verses,
+`1`-`4` switch drill modes — excluded `INPUT`/`TEXTAREA`/`isContentEditable`
+targets from those bindings, but not `SELECT`. Focusing the new
+`#themeSelect` and pressing `ArrowRight` didn't cycle its options at all;
+it stepped the active verse to the next one in the deck instead, via the
+same `stepVerse()` the arrow keys drive everywhere else on the page —
+confirmed live in the harness before fixing it. This wasn't unique to the
+new control: `#deckFilter` and `#deckSort` have had the identical gap
+since the nights they shipped, just never in a spot a keyboard user was
+as likely to tab into first. Fixed by adding `SELECT` to the guard
+alongside the other three checks, which closes it for all three selects
+at once rather than special-casing just the new one.
+
+Mutation-tested both fixes by reverting each in turn: dropping
+`applyTheme()`/`saveTheme()` from the select's `change` handler failed
+the "explicit choice wins over the OS preference" and "the choice
+survives a reload" checks exactly as expected (`expected "light", got
+null`; `expected "dark", got "system"`); reverting the `SELECT` guard
+reproduced the exact hijack described above (`expected "Genesis 1:1", got
+"Joshua 1:9"`). Restored both and confirmed 405/405 UI again each time.
+`npm test`: 1 build + 113 KJV + 405 UI (up from 390, 15 new checks) — 519
+total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and
+390px, plus screenshots of the control forcing each theme against the
+opposite OS `colorScheme` — confirmed the whole page repaints, not just
+the masthead, on both an explicit choice and a return to "system." At
+390px the masthead wraps the select and tally cleanly onto their own row
+below the wordmark and tagline, in both themes.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-07 — merge the canon-order-sort PR, then reset a verse's progress
 
 Found PR #23 open from the previous run ("Canon order" deck sort). Its one
