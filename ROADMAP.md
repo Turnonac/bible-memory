@@ -39,6 +39,40 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] An explicit light/dark theme toggle. Both **Now** and **Next** were
+  empty tonight, so proposed my own item. CLAUDE.md's own "Three theme
+  states, not two" invariant documents `data-theme="light"`/`"dark"` as a
+  real state the CSS supports — and `src/style.css` has carried complete
+  light and dark token blocks guarded exactly that way since the app's
+  first night — but nothing in `src/app.js` or `src/markup.html` had ever
+  set the attribute: the page could only ever follow the OS's
+  `prefers-color-scheme`, with no way for a reader to override it. A
+  `<select id="themeSelect">` (System / Light / Dark) now sits in the
+  masthead, styled with the same chevron-select treatment `deckFilter`/
+  `deckSort` already use. Choosing Light or Dark stamps `data-theme` on
+  the root element immediately (no reload) and persists under its own
+  `verse-by-heart:theme` localStorage key — deliberately separate from
+  `verse-by-heart:v1`, since a display preference isn't practice history
+  and has no business touching `SCHEMA`/`migrate()`. Applied as the very
+  first statement the script runs, ahead of loading the deck or any
+  render, so there's no flash of the wrong palette on load. Self-review
+  (`code-review` skill) caught a real bug: the page's global keydown
+  handler (arrow keys step between verses, `1`-`4` switch modes) excluded
+  `INPUT`/`TEXTAREA`/`isContentEditable` targets but not `SELECT` — so
+  arrow-keying or number-keying while focused on the new select (or the
+  pre-existing `deckFilter`/`deckSort` selects, same root cause) hijacked
+  the keystroke into `stepVerse()`/`setMode()` instead of the native
+  option-cycling a focused select is supposed to get. Fixed by adding
+  `SELECT` to the guard, which fixes it for all three selects at once, not
+  just the new one. Mutation-tested both the persistence and the keydown
+  fix by reverting each in turn and confirming the dedicated tests fail
+  exactly as expected, then restored. `npm test`: 1 build + 113 KJV + 405
+  UI (up from 390, 15 new checks) — 519 total. Verified in the harness
+  (real Chromium) in both themes at 1100px and 390px, including
+  screenshots of the control forcing each theme against the opposite OS
+  preference — the whole page repaints, not just the masthead, and the
+  masthead wraps the select and tally cleanly onto their own row below the
+  wordmark and tagline at the narrow width. *(2026-09-09)*
 - [x] Reset a verse's progress. Both **Now** and **Next** were empty tonight,
   so proposed my own item. Edit (2026-08-28) and undo (2026-09-05) both grew
   out of the same gap: real practice history — attempts, best, recent scores,

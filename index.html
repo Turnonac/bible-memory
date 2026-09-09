@@ -132,8 +132,29 @@
     max-width: 34ch;
   }
 
-  .masthead .tally {
+  .theme-toggle {
     margin-left: auto;
+    display: flex;
+    align-items: center;
+  }
+  .theme-toggle select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .35rem 1.5rem .35rem .6rem;
+    font-family: var(--sans);
+    font-size: .75rem;
+    color: var(--ink-soft);
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-faint) 50%),
+      linear-gradient(135deg, var(--ink-faint) 50%, transparent 50%);
+    background-position: right .7rem center, right .5rem center;
+    background-size: .3rem .3rem, .3rem .3rem;
+    background-repeat: no-repeat;
+  }
+
+  .masthead .tally {
     font-family: var(--mono);
     font-size: .75rem;
     color: var(--ink-faint);
@@ -949,6 +970,14 @@
   <header class="masthead">
     <h1 class="wordmark">Verse <span class="by">by</span> Heart</h1>
     <p>Learn a passage by watching the ink drain out of it, one word at a time.</p>
+    <div class="theme-toggle">
+      <label class="sr-only" for="themeSelect">Theme</label>
+      <select id="themeSelect">
+        <option value="system">Match system</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
     <div class="tally" id="tally"></div>
   </header>
 
@@ -1184,6 +1213,9 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
   ];
 
   const KEY = "verse-by-heart:v1";
+  const THEME_KEY = "verse-by-heart:theme"; // a display preference, not practice history — its
+                                             // own key so it never touches SCHEMA or migrate()
+  const THEMES = ["system", "light", "dark"];
   const SCHEMA = 2;            // shape of the payload inside KEY; migrate() upgrades older ones
   const VEIL_STEPS = [0, 25, 50, 75, 100];
   const MASTERY_RUNS = 3;      // consecutive attempts required
@@ -1206,6 +1238,9 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
   /* ------------------------------------------------------------------ *
    * State
    * ------------------------------------------------------------------ */
+  let theme = loadTheme();     // "system" | "light" | "dark" — applied immediately, ahead of
+  applyTheme(theme);           // loading the deck or any rendering, so there's no flash of the
+                                // wrong palette while the rest of the page comes up
   let state = load();
   let mode = "read";
   let veil = 50;
@@ -1326,6 +1361,24 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* quota or private mode */ }
+  }
+
+  function loadTheme() {
+    let raw = null;
+    try { raw = localStorage.getItem(THEME_KEY); } catch (e) { /* storage blocked */ }
+    return THEMES.includes(raw) ? raw : "system";
+  }
+
+  function saveTheme(t) {
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) { /* quota or private mode */ }
+  }
+
+  // "system" leaves the root un-stamped, so the un-stamped @media rule governs —
+  // exactly the default state CLAUDE.md's three-theme-states rule already treats
+  // as its own case, not a fallback.
+  function applyTheme(t) {
+    if (t === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", t);
   }
 
   function active() {
@@ -2977,6 +3030,13 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runCheck(); }
   });
 
+  $("themeSelect").value = theme;
+  $("themeSelect").addEventListener("change", () => {
+    theme = $("themeSelect").value;
+    applyTheme(theme);
+    saveTheme(theme);
+  });
+
   $("deckSearch").addEventListener("input", () => {
     deckQuery = $("deckSearch").value;
     renderDeck();
@@ -3122,7 +3182,7 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
 
   document.addEventListener("keydown", e => {
     const t = e.target;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const modes = { "1": "read", "2": "veil", "3": "initials", "4": "recite" };
     if (modes[e.key]) { e.preventDefault(); setMode(modes[e.key]); return; }

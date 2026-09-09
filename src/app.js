@@ -36,6 +36,9 @@
   ];
 
   const KEY = "verse-by-heart:v1";
+  const THEME_KEY = "verse-by-heart:theme"; // a display preference, not practice history — its
+                                             // own key so it never touches SCHEMA or migrate()
+  const THEMES = ["system", "light", "dark"];
   const SCHEMA = 2;            // shape of the payload inside KEY; migrate() upgrades older ones
   const VEIL_STEPS = [0, 25, 50, 75, 100];
   const MASTERY_RUNS = 3;      // consecutive attempts required
@@ -58,6 +61,9 @@
   /* ------------------------------------------------------------------ *
    * State
    * ------------------------------------------------------------------ */
+  let theme = loadTheme();     // "system" | "light" | "dark" — applied immediately, ahead of
+  applyTheme(theme);           // loading the deck or any rendering, so there's no flash of the
+                                // wrong palette while the rest of the page comes up
   let state = load();
   let mode = "read";
   let veil = 50;
@@ -178,6 +184,24 @@
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* quota or private mode */ }
+  }
+
+  function loadTheme() {
+    let raw = null;
+    try { raw = localStorage.getItem(THEME_KEY); } catch (e) { /* storage blocked */ }
+    return THEMES.includes(raw) ? raw : "system";
+  }
+
+  function saveTheme(t) {
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) { /* quota or private mode */ }
+  }
+
+  // "system" leaves the root un-stamped, so the un-stamped @media rule governs —
+  // exactly the default state CLAUDE.md's three-theme-states rule already treats
+  // as its own case, not a fallback.
+  function applyTheme(t) {
+    if (t === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", t);
   }
 
   function active() {
@@ -1829,6 +1853,13 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runCheck(); }
   });
 
+  $("themeSelect").value = theme;
+  $("themeSelect").addEventListener("change", () => {
+    theme = $("themeSelect").value;
+    applyTheme(theme);
+    saveTheme(theme);
+  });
+
   $("deckSearch").addEventListener("input", () => {
     deckQuery = $("deckSearch").value;
     renderDeck();
@@ -1974,7 +2005,7 @@
 
   document.addEventListener("keydown", e => {
     const t = e.target;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const modes = { "1": "read", "2": "veil", "3": "initials", "4": "recite" };
     if (modes[e.key]) { e.preventDefault(); setMode(modes[e.key]); return; }
