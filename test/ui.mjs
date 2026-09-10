@@ -392,6 +392,14 @@ for (const scheme of ["light", "dark"]) {
   await page.setInputFiles("#importFile", file);
   await page.waitForTimeout(300);
   eq("import restores the removed verse", await cards(), start + 1);
+  // importDeck() used to give no feedback at all on a successful import —
+  // the deck just silently changed underneath whatever was on screen, with
+  // no way to tell an import that merged the whole starter deck's progress
+  // apart from one that quietly did nothing.
+  const importMsg = await page.textContent("#importStatus");
+  check("import reports what happened",
+    importMsg.includes("1 new verse added") && importMsg.includes(start + " verses merged with existing progress"),
+    `got "${importMsg}"`);
 
   const junk = path.join(dir, "junk.json");
   fs.writeFileSync(junk, '{"not":"a deck"}');
@@ -399,6 +407,15 @@ for (const scheme of ["light", "dark"]) {
   await page.setInputFiles("#importFile", junk);
   await page.waitForTimeout(300);
   check("a malformed import leaves the deck intact", (await cards()) === start + 1);
+  check("a failed import doesn't leave the previous success message standing, claiming it worked",
+    (await page.textContent("#importStatus")) === "");
+
+  const empty = path.join(dir, "empty.json");
+  fs.writeFileSync(empty, JSON.stringify({ schema: 2, verses: [], history: {} }));
+  await page.setInputFiles("#importFile", empty);
+  await page.waitForTimeout(300);
+  eq("a file with no verses in it is reported as such, not a silent no-op",
+    await page.textContent("#importStatus"), "That file had no verses to import.");
   await ctx.close();
 }
 
@@ -2043,9 +2060,16 @@ const installGatedLookup = () => {
         // seam between the first two cards of the top row
         seamX: rows[ys[0]][0].right,
         seamY: rows[ys[0]][0].y + rows[ys[0]][0].h / 2,
-        // seam between the two rows, under the first column
+        // seam between the two rows, under the first column. ys[1] is only a
+        // *rounded* bucket key used to group cards into rows above — reusing
+        // it directly as a pixel-sampling coordinate (rather than the second
+        // row's own unrounded y, the way seamX/seamY already do for the
+        // column seam) loses up to half a pixel of precision before the crop
+        // math below even runs its own rounding, which is enough for
+        // whatever sits above .cards to occasionally shift the hairline
+        // outside the sampling window a few lines down.
         rowSeamX: rows[ys[0]][0].x + rows[ys[0]][0].w / 2,
-        rowSeamY: ys[1],
+        rowSeamY: rows[ys[1]][0].y,
         // a point well inside the trailing empty region
         emptyX: (last.right + sheet.width) / 2,
         emptyY: last.y + last.h / 2,
@@ -2280,6 +2304,10 @@ const installGatedLookup = () => {
     check("...so the lapsed verse actually comes back round",
       (await page.textContent("#queueN")) === "1", "due count " + await page.textContent("#queueN"));
     eq("cumulative attempt counts still take the higher of the two", merged.attempts, 7);
+    // Singular wording, and no "new verse added" clause at all when nothing
+    // was actually new — the plural, both-clauses case is covered above.
+    eq("a merge-only import is worded in the singular, with no added clause",
+      await page.textContent("#importStatus"), "1 verse merged with existing progress.");
     await ctx.close();
   }
 

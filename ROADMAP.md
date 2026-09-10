@@ -39,6 +39,28 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Import reports what it did. Both **Now** and **Next** were empty
+  tonight, so proposed my own item. `importDeck()` merged a file's
+  practice history into the deck exactly as designed but never said so —
+  a successful import gave no feedback at all, only an `alert()` on
+  failure, so a reader who imported a file with 30 verses' worth of
+  progress had no way to tell it from an import that silently did
+  nothing. A caption under the deck's tool row now reports what happened
+  ("3 new verses added, 12 verses merged with existing progress."),
+  mirroring the wording "Add several at once" and the shared-deck banner
+  already use elsewhere. Any status left over from a previous import is
+  cleared before the next one is even read, so a failed import can't be
+  mistaken for the last successful one. Fixing a real bug surfaced while
+  adding a screenshot-driven visual check for the new caption turned up a
+  pre-existing test fragility, not related to this feature's own logic:
+  the deck-frame pixel test's `rowSeamY` reused an already-*rounded* row-
+  grouping bucket key as if it were the exact pixel coordinate of the row
+  seam, losing up to half a pixel of precision before the crop math's own
+  rounding ran — normally masked by luck, but the new caption's added
+  height above the deck grid shifted the page's fractional offset just
+  enough to push the sampling window one pixel short of the real
+  hairline. Fixed to sample the row's own unrounded `y`, the same way the
+  column-seam check already did. *(2026-09-10)*
 - [x] An explicit light/dark theme toggle. Both **Now** and **Next** were
   empty tonight, so proposed my own item. CLAUDE.md's own "Three theme
   states, not two" invariant documents `data-theme="light"`/`"dark"` as a
