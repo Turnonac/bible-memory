@@ -3,6 +3,96 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-10 — import reports what it did
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (519 total: 1 build + 113 KJV + 405 UI), and
+`ROADMAP.md`'s **Now** and **Next** were both empty, so — per the working
+agreement — proposed my own item. Read `src/app.js` end to end looking for a
+real gap rather than inventing scope, since the "searchable verse library"
+thread the roadmap names as direction looks essentially closed (search,
+highlight, four sort modes, four filter modes, edit, reset, undo — all
+shipped over the last dozen nights).
+
+`importDeck()` does real, careful work — merging a file's practice history
+into the current deck, taking the higher of cumulative counters and the more
+recent session's whole schedule as one unit (documented at length in its own
+comments) — but says nothing about any of it succeeding. The only visible
+feedback path was `alert()`, and only on a parse failure. A reader importing
+an export with a dozen merged verses' worth of progress had exactly the same
+on-screen experience as one who picked the wrong file and it silently did
+nothing: none. `grep` for "importStatus" or any status element near the
+Import button in `src/markup.html` came back empty, confirming this wasn't a
+UI element that existed and just wasn't wired up — there was nothing there
+at all.
+
+A caption (`#importStatus`, `aria-live="polite"`) now sits under the deck's
+tool row and reports what an import actually did: "3 new verses added, 12
+verses merged with existing progress." — mirroring the exact wording pattern
+"Add several at once" (2026-08-31) and `describeShared()` (deck sharing,
+2026-08-19) already established for the same shape of problem elsewhere on
+the page, rather than inventing a fourth phrasing. Singular/plural handled
+for each clause independently, and either clause is omitted entirely when
+its count is zero rather than reading "0 new verses added, 12 merged." An
+import with no verses in it at all (an empty `verses: []`, not a parse
+failure) gets its own named message ("That file had no verses to import.")
+instead of silently succeeding at nothing. Any status text left over from an
+earlier import is cleared the moment a new one starts being read, before the
+result is known — otherwise a failed import right after a successful one
+would leave the old success message standing, misreporting what just
+happened. No schema change: this reads counts already being computed inline
+in the existing merge loop, just no longer discarded once counted.
+
+**Self-review (`code-review` skill) found no defects.** It checked the new
+`.import-status` token is legible against both theme palettes (no new custom
+colour — it reuses `--ink-soft`, already defined on bare `:root` per
+CLAUDE.md's three-theme-states rule), traced `describeImport()`'s callers,
+and confirmed the clear-before-read ordering actually runs before the
+`FileReader` resolves either way.
+
+**A screenshot-driven visual check (not `npm test` itself) turned up a real,
+pre-existing test bug, unrelated to this feature's own logic.** Adding the
+new caption above `.cards` broke "a hairline still rules the seam between
+two rows" — the deck-frame pixel test from 2026-08-22, already patched once
+before (2026-08-30) for exactly this class of fragility: something new
+sitting above the deck grid shifts its fractional pixel offset down the
+page. That earlier fix rounded the *screenshot crop* outward correctly, but
+missed a second, more subtle bug in the same test: `rowSeamY` — the
+y-coordinate the test actually samples a pixel at — was set to `ys[1]`, the
+*rounded* bucket key `Math.round(c.y)` uses purely to group cards into rows,
+not the row's own true fractional position. Reusing an already-rounded
+integer as a sub-pixel-precision sample coordinate throws away up to half a
+pixel before the crop math's own rounding even runs, doubling the rounding
+error — normally hidden by luck of which way the two roundings happen to
+fall, until this caption's added height shifted the page's fractional
+offset just enough to push the sampling window exactly one pixel short of
+where the real hairline paints. Confirmed by hand: a debug script dumping
+the raw unrounded card rects showed the true row-seam pixel sitting at
+`y≈966` on the page, one pixel outside the test's 3-pixel sampling window
+centered on its rounded `y=967`. Fixed by sampling the row's own unrounded
+`y` (`rows[ys[1]][0].y`), matching exactly how the *column* seam check
+(`seamX`/`seamY`, a few lines above the bug) already does it — the row
+check was the one inconsistent with its own neighbor.
+
+Mutation-tested all three pieces by reverting each in turn: dropping the
+`$("importStatus").textContent = describeImport(...)` line failed the three
+new checks exactly as expected (`got ""` against every expected message);
+dropping the clear-before-read line failed exactly the one check written for
+it ("a failed import doesn't leave the previous success message standing");
+reverting `rowSeamY` back to the bucket key reproduced the exact original
+failure (`window at y=138 is all paper`). Restored all three and confirmed
+409/409 UI again. `npm test`: 1 build + 113 KJV + 409 UI (up from 405, 4 new
+checks: 3 for the import feature, 1 for the merge-only singular-wording
+case) — 523 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and 390px,
+via screenshots after a real import: the caption reads correctly and stays
+legible against both `--sunken`-adjacent grounds, and wraps cleanly onto its
+own line at 390px in both themes without disturbing the button row above it
+or the queue card below it.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-09 — an explicit light/dark theme toggle
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

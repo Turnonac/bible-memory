@@ -1700,7 +1700,24 @@
     }
   }
 
+  // Mirrors the "N verses added, M already in your deck" wording
+  // addManyForm's own status line and describeShared() already use — an
+  // import previously gave no feedback at all on success, only an alert()
+  // on failure, so there was no way to tell an import that merged 30
+  // verses' progress apart from one that silently did nothing.
+  function describeImport(added, merged) {
+    if (!added && !merged) return "That file had no verses to import.";
+    const parts = [];
+    if (added) parts.push(added + (added === 1 ? " new verse added" : " new verses added"));
+    if (merged) parts.push(merged + (merged === 1 ? " verse merged with existing progress" : " verses merged with existing progress"));
+    return parts.join(", ") + ".";
+  }
+
   function importDeck(file) {
+    // Clear any status left over from a previous import before this one is
+    // even read, so a failed import here can't be mistaken for a success by
+    // leaving an earlier "N verses added" message standing.
+    $("importStatus").textContent = "";
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -1713,9 +1730,11 @@
           verses: parsed.verses.filter(v => v && v.ref && v.text).map(normalizeVerse)
         });
         const byRef = new Map(state.verses.map(v => [v.ref.toLowerCase(), v]));
+        let added = 0, merged = 0;
         incoming.verses.forEach(raw => {
           const mine = byRef.get(raw.ref.toLowerCase());
           if (mine) {
+            merged++;
             // Attempts and best are cumulative, so they take the higher of the two.
             mine.attempts = Math.max(mine.attempts, raw.attempts);
             mine.best = Math.max(mine.best, raw.best);
@@ -1732,6 +1751,7 @@
               mine.due = raw.due;
             }
           } else {
+            added++;
             if (state.verses.some(v => v.id === raw.id)) raw.id = blankVerse("", "", "custom").id;
             state.verses.push(raw);
             byRef.set(raw.ref.toLowerCase(), raw);
@@ -1742,6 +1762,7 @@
         });
         save();
         renderAll();
+        $("importStatus").textContent = describeImport(added, merged);
       } catch (e) {
         alert("That file isn't a Verse by Heart export. Pick the JSON file you downloaded with Export.");
       }

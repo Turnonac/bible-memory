@@ -459,6 +459,7 @@
     font-weight: 600;
   }
   .deck-head .tools { margin-left: auto; display: flex; gap: .4rem; flex-wrap: wrap; }
+  .import-status { color: var(--ink-soft); font-size: .75rem; min-height: 1.1em; margin: .5rem 0 0; }
 
   /* ---------- review queue ---------- *
      Madder rail means work is waiting, the same as the active card's rail and
