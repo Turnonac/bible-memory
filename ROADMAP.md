@@ -39,6 +39,44 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Refuse a duplicate reference when adding or editing a verse. Both
+  **Now** and **Next** were empty tonight, so proposed my own item.
+  `existingRefSet()` — "the one case-insensitive 'is this reference already
+  in my deck' rule" its own comment names it — was already shared by deck
+  sharing and "Add several at once," but the original single-verse "Add a
+  verse of your own" form predates that helper and had never been wired to
+  it: submitting the same reference twice silently forked a second card
+  with its own blank SM-2 schedule, fragmenting whatever practice history
+  the first one already had, rather than saying anything. Self-review
+  (`code-review` skill) surfaced the identical gap one step over: the
+  edit-in-place form could rename a card's reference to collide with a
+  *different* existing card the same way, for the same reason. Fixed both
+  from one generalized `existingRefSet(excludeId)` — the edit path excludes
+  the card being edited from the set, so saving with its reference
+  unchanged doesn't collide with its own pre-edit entry, while a fresh add
+  still checks against every verse in the deck. Both surface the exact same
+  wording ("‹ref› is already in your deck.") in the same inline error slot
+  each form already uses for its other validation failures. Mutation-tested
+  both checks independently by reverting each in turn: the add-form
+  reversion failed exactly the two new duplicate/case-insensitivity checks
+  before cascading into a `.drop` selector's now-doubled-up strict-mode
+  violation later in the same test file — a second, independent signal that
+  the fix, not something else, is what keeps a duplicate from ever reaching
+  the deck; the edit-form reversion hung the new test on a `.card-edit .err`
+  locator that never appears, since the unfixed save just succeeds and
+  closes the form. Restored both and confirmed 414/414 again. Fixing this
+  also meant retiring one pre-existing test's own accidental collision: the
+  "Enter in the reference field triggers a lookup" check happened to look up
+  "James 1:5," already in the 28-verse starter deck, and only ever passed
+  because the single-add form had no duplicate check yet — swapped it for
+  "1 Peter 5:7" (not in the starter deck) so the test still proves what it
+  always meant to (a lookup result submits like any other) without now
+  tripping the very guard this PR adds. `npm test`: 1 build + 113 KJV + 414
+  UI (up from 409, 5 new checks) — 528 total. Verified in the harness (real
+  Chromium) in both themes at 1100px and 390px: the error names the
+  colliding reference, reads legibly against both palettes, and neither
+  form's layout shifts to accommodate it since it lands in the same error
+  slot each form already reserves. *(2026-09-11)*
 - [x] Import reports what it did. Both **Now** and **Next** were empty
   tonight, so proposed my own item. `importDeck()` merged a file's
   practice history into the deck exactly as designed but never said so —

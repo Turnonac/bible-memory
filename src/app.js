@@ -86,10 +86,14 @@
                                 // other kind's pending offer was, rather than queueing both.
 
   // The one case-insensitive "is this reference already in my deck" rule,
-  // shared by deck sharing and add-several-at-once so the two "is this a
-  // duplicate" checks can't silently drift apart from each other.
-  function existingRefSet() {
-    return new Set(state.verses.map(v => v.ref.toLowerCase()));
+  // shared by every path that can introduce or rewrite a reference — adding
+  // one verse, adding several at once, deck sharing, and editing an existing
+  // card's reference — so none of them can silently drift apart from another
+  // on what counts as a duplicate. `excludeId` leaves one verse (itself, when
+  // editing) out of the set, so saving a card without actually changing its
+  // reference doesn't collide with its own pre-edit entry.
+  function existingRefSet(excludeId) {
+    return new Set(state.verses.filter(v => v.id !== excludeId).map(v => v.ref.toLowerCase()));
   }
 
   function blankVerse(ref, text, source) {
@@ -875,6 +879,7 @@
       const text = textArea.value.trim();
       if (!ref) { err.textContent = "Give it a reference so you can find it again."; refInput.focus(); return; }
       if (tokens(text).length < 2) { err.textContent = "Needs at least a couple of words."; textArea.focus(); return; }
+      if (existingRefSet(v.id).has(ref.toLowerCase())) { err.textContent = ref + " is already in your deck."; refInput.focus(); return; }
       saveVerseEdit(v.id, ref, text);
     });
     return form;
@@ -1939,6 +1944,12 @@
     const err = $("addErr");
     if (!ref) { err.textContent = "Give it a reference so you can find it again."; $("newRef").focus(); return; }
     if (tokens(text).length < 2) { err.textContent = "Paste the verse text — at least a couple of words, or look it up."; $("newText").focus(); return; }
+    // The same "is this reference already in my deck" rule "Add several at once"
+    // and deck sharing already enforce (existingRefSet(), above) — this original,
+    // single-verse form predates that helper and had never been wired to it, so a
+    // duplicate reference silently forked into a second card with its own blank
+    // SM-2 schedule, fragmenting whatever history the first one already had.
+    if (existingRefSet().has(ref.toLowerCase())) { err.textContent = ref + " is already in your deck."; $("newRef").focus(); return; }
     err.textContent = "";
     const v = blankVerse(ref, text, "custom");
     state.verses.push(v);
