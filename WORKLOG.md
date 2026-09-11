@@ -3,6 +3,86 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-11 — refuse a duplicate reference on add and edit
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (523 total: 1 build + 113 KJV + 409 UI), and
+`ROADMAP.md`'s **Now** and **Next** were both empty, so — per the working
+agreement — proposed my own item.
+
+`existingRefSet()` already exists in `src/app.js` with a comment naming it
+"the one case-insensitive 'is this reference already in my deck' rule,"
+shared by deck sharing (2026-08-19) and "Add several at once" (2026-08-31).
+Reading every one of its call sites turned up a real gap that comment
+didn't cover: the original single-verse "Add a verse of your own" form —
+the very first form the app ever had, from 2026-08-11, well before
+`existingRefSet()` was factored out — had never been wired to it at all.
+Confirmed directly rather than assuming: submitting "Genesis 1:1" a second
+time through that form silently pushed a second card, identical reference,
+brand-new blank SM-2 schedule, no error of any kind. `grep`ing
+`test/ui.mjs` for anything that exercised this path came back empty — not
+a deliberately untested edge case, just one nobody had wired up or noticed.
+
+Added a duplicate check to the single-add form's submit handler, ordered
+after the existing empty-reference and under-two-words checks so neither of
+those two pre-existing validations' own error wording changes for the
+inputs that already trigger them. It reads "‹reference› is already in your
+deck." in the same `#addErr` slot the form's other two rejections already
+use.
+
+**Self-review (`code-review` skill) caught the identical gap one step over,
+before this shipped.** The edit-in-place form (2026-08-28) validates an
+empty reference and short text the same way the add form does, but never
+checked whether the *edited* reference collides with a different card
+already in the deck — renaming "Genesis 1:1" to "Psalm 46:1" while both
+exist would silently produce two cards both claiming to be Psalm 46:1, one
+with a live schedule and one that just got clobbered into matching it. Same
+root cause, same fix shape, so generalized `existingRefSet()` to take an
+optional `excludeId` rather than write a second, parallel duplicate check:
+the add path calls it with no argument (check against everything), the edit
+path passes the card's own `id` (check against everything *else*), so
+saving a card with its reference genuinely unchanged doesn't collide with
+its own pre-edit entry. The other two existing callers (deck sharing,
+add-several) are unaffected — `excludeId` defaults to `undefined`, which
+never matches a real verse id (ids are `"v" + a random suffix`, never
+literally `undefined`).
+
+Fixing this surfaced one pre-existing test that only ever passed by
+coincidence: "Enter in the reference field triggers a lookup" used "James
+1:5" as its example — already in the 28-verse starter deck — and its final
+assertion ("a looked-up verse adds to the deck like any other") only held
+because nothing checked for duplicates yet. Left as-is, it would now fail
+for the *right* reason (the new guard correctly refusing to add a verse
+already in the deck) while claiming to test something unrelated. Swapped
+the fixture to "1 Peter 5:7," not in the starter deck, so the test still
+proves its actual point — a freshly looked-up verse submits normally —
+without exercising the very guard this PR adds. Verified the replacement
+reference's exact KJV wording ("Casting all your care upon him; for he
+careth for you.") directly against the app's own lookup in the harness
+before using it in the assertion, rather than guessing the 1769 wording.
+
+Mutation-tested both checks independently by reverting each in turn and
+restoring: dropping the add-form check failed exactly the two new
+duplicate/case-insensitivity checks, then cascaded into an unrelated
+`.drop` locator further down the same test file resolving to two identical
+buttons instead of one (Playwright's strict mode refuses to guess which)
+— a second, independent signal, not just a value mismatch, that this is
+what keeps a second card from ever existing; dropping the edit-form check
+hung the new rename-collision test on a `.card-edit .err` locator that
+never appears, since the unfixed save just succeeds and closes the form
+outright. Restored both and confirmed 414/414 UI again each time. `npm
+test`: 1 build + 113 KJV + 414 UI (up from 409, 5 new checks: 2 for the
+add-form duplicate/case-insensitivity, 3 for the edit-form collision,
+self-exclusion, and the untouched colliding card) — 528 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and 390px:
+the error names the exact reference that collided, stays legible against
+both palettes, and neither form's layout shifts to make room for it since
+it lands in the same inline error slot each form already reserves for its
+other rejections.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-10 — import reports what it did
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned
