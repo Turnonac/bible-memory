@@ -374,6 +374,22 @@ for (const scheme of ["light", "dark"]) {
   check("a missing reference is refused with a readable message",
     (await page.textContent("#addErr")).length > 10 && (await cards()) === start + 1);
 
+  // "Add several at once" and deck sharing both dedupe against the reader's
+  // existing deck (existingRefSet()) — this original single-verse form had
+  // never been wired to that same rule, so submitting the same reference
+  // twice silently forked a second card with its own blank SM-2 schedule
+  // instead of being told it was already there.
+  await page.fill("#newRef", "Psalm 27:1");
+  await page.fill("#newText", "Some other wording entirely.");
+  await page.click("#addForm button[type=submit]");
+  check("a reference already in the deck is refused, not added a second time",
+    (await page.textContent("#addErr")).includes("Psalm 27:1") && (await cards()) === start + 1);
+
+  await page.fill("#newRef", "PSALM 27:1");
+  await page.click("#addForm button[type=submit]");
+  check("the duplicate check is case-insensitive",
+    (await page.textContent("#addErr")).length > 0 && (await cards()) === start + 1);
+
   const [download] = await Promise.all([page.waitForEvent("download"), page.click("#exportBtn")]);
   const file = path.join(dir, "deck.json");
   await download.saveAs(file);
@@ -912,11 +928,15 @@ let sharedHash;
   check("looking up with no reference asks for one", (await page.textContent("#addErr")).length > 5);
 
   // Enter in the Reference field should look up, not submit the half-filled form.
-  await page.fill("#newRef", "James 1:5");
+  // Deliberately a reference not already in the starter deck (unlike, say,
+  // "James 1:5") — the single-add form now rejects a reference it already
+  // has, and this test's own point is confirming a *fresh* looked-up verse
+  // still adds normally, not re-exercising that rejection.
+  await page.fill("#newRef", "1 Peter 5:7");
   await page.press("#newRef", "Enter");
   await page.waitForFunction(() => document.getElementById("lookupBtn").textContent === "Look up");
   check("Enter in the reference field triggers a lookup",
-    (await page.inputValue("#newText")).startsWith("If any of you lack wisdom"));
+    (await page.inputValue("#newText")).startsWith("Casting all your care upon him"));
 
   const cardsBefore = await page.$$eval(".card", n => n.length);
   await page.click("#addForm button[type=submit]");
@@ -2827,6 +2847,24 @@ const installGatedLookup = () => {
     await page.click(".card-edit .actions button[type=submit]");
     check("verse text under two words is rejected with an inline error",
       (await page.textContent(".card-edit .err")).length > 0);
+
+    // Renaming a card's reference to collide with a *different* card must be
+    // refused the same way the single-add form refuses a fresh duplicate —
+    // otherwise two cards end up tracking the same reference under two
+    // separate SM-2 schedules.
+    await page.fill("#editRef", "Psalm 46:1");
+    await page.fill("#editText", "Renamed to collide with another card.");
+    await page.click(".card-edit .actions button[type=submit]");
+    check("editing a reference to collide with another card is rejected",
+      (await page.textContent(".card-edit .err")).includes("Psalm 46:1"));
+    check("the form stays open after a rejected rename", !!(await page.$(".card-edit")));
+    eq("the colliding card's own reference is left untouched",
+      await page.textContent(`${card("Psalm 46:1")} .ref .open`), "Psalm 46:1");
+
+    // Saving a card with its *own* current reference unchanged is not a
+    // collision with itself — the exclusion has to name this card, not just
+    // suppress the check outright.
+    await page.fill("#editRef", "Genesis 1:1");
 
     // A valid save updates the card and closes the form.
     await page.fill("#editText", "In the beginning God made everything good and very fine.");
