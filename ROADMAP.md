@@ -39,6 +39,37 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Undo a saved edit. Both **Now** and **Next** were empty tonight, so
+  proposed my own item. Removal (2026-09-05) and reset (2026-09-07) each got
+  a six-second undo grace window because both destroy real, irreplaceable
+  practice history with one click; saving an edit never got the same
+  treatment even though it's exactly as destructive to a verse's reference
+  and text, and *more* likely to be the mistake itself — a hand-typed
+  "correction" can just as easily introduce a new error as fix the one it
+  targeted. `saveVerseEdit()` now snapshots the pre-edit reference, text,
+  and source before overwriting them, and offers the same `#undoBanner`
+  reset and removal already share, generalizing `pendingUndo` to a third
+  `{kind: "edit", id, snapshot, timer}` shape alongside `"remove"`/`"reset"`.
+  Self-review (`code-review` skill) caught a real bug in the first version:
+  restoring only the text and source when the pre-edit reference had since
+  been claimed by something else (a fresh "Add a verse" doesn't share the
+  undo mechanism's single pending slot, so it isn't forfeited the way a
+  second edit or a removal would be) produced a card whose reference and
+  text no longer matched each other, plus a false "verified 1769 text"
+  claim if the source flipped back to `"kjv"`. Fixed by making the whole
+  restoration all-or-nothing: if the old reference is taken, the edit
+  stands exactly as it was rather than partially unwinding into a
+  mismatched card. Mutation-tested three ways: dropping the `offerEditUndo`
+  call, reverting the `undo()` dispatcher's new branch, and reverting the
+  all-or-nothing guard back to a reference-only condition — each failed
+  its dedicated test exactly as expected (a hung `page.click` waiting on a
+  banner that never appears, in the first two cases; the exact
+  reference/text mismatch in the third). `npm test`: 1 build + 113 KJV +
+  437 UI (up from 414, 23 new checks) — 551 total. Verified in the harness
+  (real Chromium) in both themes at 1100px and 390px: the banner wraps
+  correctly under the narrow width and reads "Edited ‹ref›." in the same
+  madder-rail idiom removal and reset already use, with no page errors.
+  *(2026-09-13)*
 - [x] Refuse a duplicate reference when adding or editing a verse. Both
   **Now** and **Next** were empty tonight, so proposed my own item.
   `existingRefSet()` — "the one case-insensitive 'is this reference already

@@ -3,6 +3,77 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-13 — merge the duplicate-reference PR, then undo a saved edit
+
+Found PR #27 open from a previous run ("Refuse a duplicate reference when
+adding or editing a verse"). CodeRabbit's review found no actionable
+issues (only a docstring-coverage nitpick this project's no-comments style
+deliberately ignores). Pulled the branch into a worktree, ran `npm test`
+myself rather than trusting the PR body's numbers (528 total: 1 build +
+113 KJV + 414 UI), read the diff directly — a clean, well-scoped
+generalization of the existing `existingRefSet()` helper with an
+`excludeId` parameter — and squash-merged.
+
+`ROADMAP.md`'s **Now** and **Next** were both empty afterward, so proposed
+my own item. Reading `src/app.js` end to end looking for a real gap turned
+up an asymmetry: removal (2026-09-05) and reset (2026-09-07) both offer a
+six-second undo because each destroys real, irreplaceable practice history
+with a single click — but editing a verse's reference or text (2026-08-28)
+never got the same treatment, despite being exactly as destructive to the
+one thing an edit touches (the reference and text themselves), and
+arguably a *more* likely source of a mistake worth undoing: a hand-typed
+correction can just as easily introduce a new error as fix the one it
+targeted, with no confirmation step of its own the way "remove"/"reset"
+arm-then-confirm before acting at all.
+
+`saveVerseEdit()` now snapshots the pre-edit `{ref, text, source}` before
+overwriting them, and offers the same `#undoBanner`/`#undoMsg`/`#undoBtn`
+removal and reset already share — generalizing `pendingUndo` to a third
+`{kind: "edit", id, snapshot, timer}` shape alongside the existing
+`"remove"`/`"reset"`, so the established "any one kind of action forfeits
+another kind's pending offer" rule now covers all three combinations, not
+just the original two.
+
+**Self-review (`code-review` skill) caught a real bug in the first
+version.** My own first pass guarded only the *reference* half of the
+restore: if something else had claimed the pre-edit reference during the
+six-second grace window (a fresh "Add a verse" doesn't share the undo
+mechanism's single pending slot, so it isn't forfeited the way a second
+edit or a removal would be), I left the reference alone but still
+restored the text and source unconditionally — producing a card labeled
+with its *new* reference but holding its *old* text, and potentially a
+false "verified 1769 text" claim if the source flipped back to `"kjv"`.
+Confirmed reachable directly: rename a verse's reference (changing its
+text too), let a different "Add a verse" claim the vacated reference
+within the grace window, then click Undo — the renamed card kept its new
+reference but silently reverted to the old verse's wording. Fixed by
+making the whole restoration all-or-nothing: when the old reference is
+taken, the edit stands exactly as it was rather than partially unwinding
+into a mismatched card. This is more conservative than the reference-only
+guard I'd started with, but a declined undo is a much smaller cost than a
+card whose label and contents silently disagree.
+
+Mutation-tested three pieces by reverting each in turn: dropping the
+`offerEditUndo()` call after a successful save hung the whole run on a
+`page.click("#undoBtn")` that never becomes visible; reverting the
+`undo()` dispatcher's new `"edit"` branch (falling through to
+`undoRemove()`) hung the same way, since a remove-shaped restore does
+nothing useful against an edit-shaped `pendingUndo` payload; reverting the
+all-or-nothing fix back to a reference-only guard reproduced the exact
+mismatch described above (the card's snippet came back as the *other*
+verse's original text while its own edited text stayed lost). Restored
+all three and confirmed 437/437 UI again each time. `npm test`: 1 build +
+113 KJV + 437 UI (up from 414, 23 new checks) — 551 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and
+390px: editing a verse's text and saving shows the "Edited ‹ref›." banner
+in the same madder-rail idiom removal and reset already use, wraps its
+button under the message at the narrow width exactly like the existing
+banner already does, stays legible in dark mode, and raises no page
+errors.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-11 — refuse a duplicate reference on add and edit
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

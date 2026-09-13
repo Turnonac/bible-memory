@@ -79,11 +79,12 @@
                                 // card) rebuilds the form from what's been typed, not from the
                                 // unchanged verse on disk — otherwise the rebuild silently
                                 // discards whatever the reader was mid-typing
-  let pendingUndo = null;      // the most recent undoable action — either a removal
-                                // ({ kind: "remove", verse, index, wasActive, wasNextDue, timer })
-                                // or a progress reset ({ kind: "reset", id, snapshot, timer }).
-                                // A single slot: either kind of action forfeits whatever the
-                                // other kind's pending offer was, rather than queueing both.
+  let pendingUndo = null;      // the most recent undoable action — a removal
+                                // ({ kind: "remove", verse, index, wasActive, wasNextDue, timer }),
+                                // a progress reset ({ kind: "reset", id, snapshot, timer }), or a
+                                // card edit ({ kind: "edit", id, snapshot, timer }).
+                                // A single slot: any one kind of action forfeits whatever another
+                                // kind's pending offer was, rather than queueing more than one.
 
   // The one case-insensitive "is this reference already in my deck" rule,
   // shared by every path that can introduce or rewrite a reference — adding
@@ -739,10 +740,15 @@
   // than the delete-and-re-add path forcing a reader to lose that progress
   // over a misspelling. A hand-edited verse can no longer claim to be the
   // verified 1769 text test/verify-kjv.mjs checks the starter deck against,
-  // so editing any verse — starter or custom — marks it "custom".
+  // so editing any verse — starter or custom — marks it "custom". Unlike
+  // reset and remove, saving an edit has no arm-then-confirm step of its
+  // own — a single click overwrites the pre-edit reference and text, which
+  // for a hand-typed correction could just as easily be wrong as the typo it
+  // was meant to fix. Offers the same undo grace window they do.
   function saveVerseEdit(id, ref, text) {
     const v = state.verses.find(x => x.id === id);
     if (!v) return;
+    const snapshot = { ref: v.ref, text: v.text, source: v.source };
     v.ref = ref;
     v.text = text;
     v.source = "custom";
@@ -765,6 +771,11 @@
     }
     save();
     renderAll();
+    offerEditUndo(v, snapshot);
+  }
+
+  function offerEditUndo(verse, snapshot) {
+    armUndo("edit", "Edited " + verse.ref + ".", { id: verse.id, snapshot: snapshot });
   }
 
   function buildEditForm(v) {
@@ -1149,6 +1160,7 @@
   function undo() {
     if (!pendingUndo) return;
     if (pendingUndo.kind === "reset") undoReset();
+    else if (pendingUndo.kind === "edit") undoEdit();
     else undoRemove();
   }
 
@@ -1233,6 +1245,43 @@
     clearPendingUndo();
     const v = state.verses.find(x => x.id === id);
     if (v) Object.assign(v, snapshot);
+    save();
+    renderAll();
+  }
+
+  function undoEdit() {
+    if (!pendingUndo || pendingUndo.kind !== "edit") return;
+    const id = pendingUndo.id, snapshot = pendingUndo.snapshot;
+    clearPendingUndo();
+    const v = state.verses.find(x => x.id === id);
+    // A different card — or a brand-new "Add a verse" — could have claimed
+    // the pre-edit reference during the grace window: adding a verse
+    // doesn't share this undo's single pending slot, so it isn't forfeited
+    // the way a second edit or a removal would be. Restoring the old
+    // reference regardless would silently recreate the exact duplicate-
+    // reference bug existingRefSet() exists to prevent — and restoring only
+    // the text and source while leaving the current (disputed) reference in
+    // place would be worse still, producing a card whose reference and text
+    // no longer match each other. So the whole restoration is all-or-
+    // nothing: declining just the reference isn't an option once the text
+    // and source are already tied to it.
+    if (v && !existingRefSet(id).has(snapshot.ref.toLowerCase())) {
+      v.ref = snapshot.ref;
+      v.text = snapshot.text;
+      v.source = snapshot.source;
+      // Same reasoning as saveVerseEdit() itself: stale peeked/hideOrder
+      // indices from whichever text was active going into this could point
+      // at the wrong words, or past the end, now that the word count is
+      // changing again.
+      if (active().id === id) {
+        endListening(false);
+        setSpeakStatus("", false);
+        peeked = new Set();
+        hideOrder = [];
+        $("attempt").value = "";
+        $("result").hidden = true;
+      }
+    }
     save();
     renderAll();
   }
