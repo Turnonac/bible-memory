@@ -2888,6 +2888,158 @@ const installGatedLookup = () => {
     await ctx.close();
   }
 
+  /* --- undo a saved edit --- */
+  {
+    // Unlike reset and remove, saving an edit has no arm-then-confirm step
+    // of its own — a single click overwrites the pre-edit reference and
+    // text, which for a hand-typed correction could just as easily be wrong
+    // as the typo it was meant to fix. Reuses the same undo banner and
+    // single-pending-slot machinery reset and removal already share.
+    const EDIT_UNDO = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN,
+                attempts: 3, best: 87, last: "2026-01-01",
+                recent: [80, 90, 87], ease: 2.6, reps: 3, interval: 12, due: "2099-01-01" })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(EDIT_UNDO);
+    const card = ref => `.card:has(.ref .open:text-is("${ref}"))`;
+    const dropFor = ref => page.locator(".card").filter({ hasText: ref }).locator(".drop");
+
+    check("the undo banner is hidden before any edit", !(await page.isVisible("#undoBanner")));
+
+    await page.click(`${card("Genesis 1:1")} .stat .edit`);
+    await page.fill("#editRef", "Genesis 1:2");
+    await page.fill("#editText", "And the earth was without form, and void.");
+    await page.click(".card-edit .actions button[type=submit]");
+
+    check("saving an edit offers an undo", await page.isVisible("#undoBanner"));
+    check("the undo banner names the verse's new reference",
+      (await page.textContent("#undoMsg")).includes("Genesis 1:2"),
+      await page.textContent("#undoMsg"));
+
+    await page.click("#undoBtn");
+    check("the banner clears once the undo is used", !(await page.isVisible("#undoBanner")));
+    eq("undoing an edit restores the original reference",
+      await page.textContent(`${card("Genesis 1:1")} .ref .open`), "Genesis 1:1");
+    eq("...and the original text",
+      await page.textContent(`${card("Genesis 1:1")} .snippet`), GEN);
+    let restored = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Genesis 1:1"));
+    eq("undoing an edit restores the verse's original source, not left stuck at \"custom\"",
+      restored.source, "kjv");
+    eq("undoing an edit leaves attempts untouched — the edit itself never changed them",
+      restored.attempts, 3);
+    eq("undoing an edit leaves the SM-2 interval untouched",
+      restored.interval, 12);
+
+    // Cross-kind supersession, both directions — a single pending-undo slot
+    // shared by remove, reset, and now edit alike.
+    await page.click("details.add > summary");
+    await page.fill("#newRef", "Cross Kind Test 1:1");
+    await page.fill("#newText", "This line exists only to be removed for the cross-kind check.");
+    await page.click("#addForm button[type=submit]");
+    await dropFor("Cross Kind Test 1:1").click();
+    await dropFor("Cross Kind Test 1:1").click(); // confirm
+    check("a removal is pending undo", (await page.textContent("#undoMsg")).includes("Cross Kind Test 1:1"));
+
+    await page.click(`${card("Genesis 1:1")} .stat .edit`);
+    await page.fill("#editText", "A second correction, to test cross-kind supersession.");
+    await page.click(".card-edit .actions button[type=submit]");
+    check("editing a verse supersedes a pending removal's undo offer",
+      (await page.textContent("#undoMsg")).includes("Genesis 1:1"),
+      await page.textContent("#undoMsg"));
+    await page.click("#undoBtn");
+    check("the superseded removal is not silently undone",
+      await page.locator(".card").filter({ hasText: "Cross Kind Test 1:1" }).count() === 0);
+    eq("the edit that actually claimed the slot is what comes back",
+      await page.textContent(`${card("Genesis 1:1")} .snippet`), GEN);
+
+    // And the reverse order: removing a verse after an edit supersedes the
+    // edit's pending undo, so Undo brings back the removed verse, not the
+    // edit's pre-edit text.
+    await page.click(`${card("Genesis 1:1")} .stat .edit`);
+    await page.fill("#editText", "A third correction, to test the reverse order.");
+    await page.click(".card-edit .actions button[type=submit]");
+    await page.fill("#newRef", "Reverse Order Test 1:1");
+    await page.fill("#newText", "This second throwaway line is for the reverse-order check.");
+    await page.click("#addForm button[type=submit]");
+    await dropFor("Reverse Order Test 1:1").click();
+    await dropFor("Reverse Order Test 1:1").click();
+    check("a removal after an edit supersedes the edit's pending undo",
+      (await page.textContent("#undoMsg")).includes("Reverse Order Test 1:1"),
+      await page.textContent("#undoMsg"));
+    await page.click("#undoBtn");
+    check("the removed verse comes back",
+      await page.locator(".card").filter({ hasText: "Reverse Order Test 1:1" }).count() === 1);
+    eq("the superseded edit is not silently undone",
+      await page.textContent(`${card("Genesis 1:1")} .snippet`),
+      "A third correction, to test the reverse order.");
+
+    await ctx.close();
+  }
+
+  /* --- undoing an edit must not recreate a duplicate reference --- */
+  {
+    // A different card, or a brand-new "Add a verse", can claim an edit's
+    // pre-edit reference during the six-second grace window — adding a
+    // verse doesn't share the undo mechanism's single pending slot, so it
+    // doesn't forfeit a pending edit's offer the way a second edit or a
+    // removal would. Undo must not blindly restore a reference something
+    // else has since claimed — that would silently recreate the exact
+    // duplicate-reference bug existingRefSet() exists to prevent.
+    const DUP_UNDO = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, ease: 2.5, reps: 0, interval: 0, due: null })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(DUP_UNDO);
+    const card = ref => `.card:has(.ref .open:text-is("${ref}"))`;
+
+    // Rename Genesis 1:1 out of the way, freeing up its old reference.
+    await page.click(`${card("Genesis 1:1")} .stat .edit`);
+    await page.fill("#editRef", "Genesis 1:2");
+    await page.fill("#editText", "A renamed verse, freeing up Genesis 1:1's old reference.");
+    await page.click(".card-edit .actions button[type=submit]");
+    check("the rename's undo is pending", (await page.textContent("#undoMsg")).includes("Genesis 1:2"));
+
+    await page.click("details.add > summary");
+    await page.fill("#newRef", "Genesis 1:1");
+    await page.fill("#newText", "A brand new verse, deliberately claiming the vacated reference.");
+    await page.click("#addForm button[type=submit]");
+    check("the new verse claims the vacated reference",
+      await page.locator(card("Genesis 1:1")).count() === 1);
+    check("the rename's undo offer is still showing — adding a verse doesn't touch it",
+      (await page.textContent("#undoMsg")).includes("Genesis 1:2"));
+
+    await page.click("#undoBtn");
+    eq("only one card claims the disputed reference — undo did not duplicate it",
+      await page.locator(card("Genesis 1:1")).count(), 1);
+    eq("the newly-added verse still holds the reference it claimed",
+      await page.textContent(`${card("Genesis 1:1")} .snippet`),
+      "A brand new verse, deliberately claiming the vacated reference.");
+    // Restoring only the text and source while leaving the disputed
+    // reference in place would produce a card labeled "Genesis 1:2" but
+    // holding Genesis 1:1's actual wording — a worse outcome than declining
+    // the undo outright. The whole restoration is all-or-nothing, so the
+    // edit stands exactly as it was, untouched by the failed undo attempt.
+    eq("the edit is left exactly as it was, not partially unwound into a mismatched card",
+      await page.textContent(`${card("Genesis 1:2")} .snippet`),
+      "A renamed verse, freeing up Genesis 1:1's old reference.");
+    const stillEdited = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("verse-by-heart:v1")).verses.find(v => v.ref === "Genesis 1:2"));
+    eq("...including its source flip to \"custom\" — nothing about the edit is undone",
+      stillEdited.source, "custom");
+
+    await ctx.close();
+  }
+
   /* --- editing the active verse resets stale veil state instead of corrupting it --- */
   {
     const EDIT_ACTIVE = {
