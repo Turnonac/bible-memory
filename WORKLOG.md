@@ -3,6 +3,69 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-14 — merge the undo-edit PR, then surface "needs work" in the tally
+
+Found PR #28 open from a previous run ("Offer undo after saving a verse
+edit"). `mergeable_state` read "clean" (base already equal to `main`'s
+tip), CodeRabbit's review found no actionable issues, and the PR body
+documented mutation-testing three pieces of the fix. Pulled the branch into
+a worktree, ran `npm test` myself rather than trusting the PR body's
+numbers (551 total: 1 build + 113 KJV + 437 UI), read the diff directly —
+a clean, all-or-nothing extension of the existing `pendingUndo` mechanism
+to a third `"edit"` kind — and squash-merged.
+
+`ROADMAP.md`'s **Now** and **Next** were both empty afterward, so proposed
+my own item. Reading `src/app.js` end to end for a real gap (not an
+invented one) turned up an asymmetry the sparkline/"Needs work" filter
+history already has a name for: the "Needs work" deck filter (2026-09-03)
+reads `isStruggling()` to narrow the card grid, but the masthead's own
+headline tally next to the wordmark — "N verses / N due / N mastered" —
+never grew a fourth clause for it, even though the other three facets the
+app tracks (verses, due, mastered) all get one. A reader who never opens
+the filter select has no way to learn "2 of my verses need work" without
+scanning every card by eye.
+
+`renderTally()` now appends "&nbsp;/&nbsp; N needs work" using the exact
+same `isStruggling()` predicate the filter already established, in the same
+`<b>N</b> label` visual idiom as the other three clauses. Deliberately
+*not* unconditional like the other three: at zero — the deck's ordinary
+resting state — showing "0 needs work" on every visit would just be noise,
+so the clause is omitted entirely rather than always rendered.
+
+**Caught my own regression before shipping, verified visually rather than
+just by reasoning about the CSS.** `.masthead .tally` has carried
+`white-space: nowrap` since the tally first shipped, to keep the three
+short clauses on one line. The fourth clause pushes the line past 390px:
+a harness screenshot at that width showed "needs work" clipped clean off
+the right edge, not wrapped — `nowrap` forces the whole line to stay
+unbroken rather than reflow, and a bare `.evaluate()` check confirmed a
+literal 3px of `document.documentElement.scrollWidth` overflow past
+`clientWidth`. Fixing it by simply dropping `nowrap` created a second,
+subtler bug: the existing markup only wrapped a real (breakable) space
+between a number and its label (`<b>3</b> verses`), so the browser broke
+mid-pair — a screenshot showed "2 needs" stranded on one line and "work"
+alone on the next. Fixed by gluing every number to its label, and both
+words of "needs work" to each other, with their own `&nbsp;` (not just the
+`&nbsp;` already bracketing each "/" separator) — the only breakable spaces
+left are *between* whole clauses, so a wrap can only ever land there.
+
+Mutation-tested two ways: reverting `renderTally()` to drop the struggling
+clause entirely failed exactly the two new checks for it (glued-pair
+wording, zero-suppression); restoring `white-space: nowrap` on
+`.masthead .tally` reproduced the exact 390px overflow the new dedicated
+check exists for (`expected 0, got 3`). Restored both and confirmed
+440/440 UI again each time. `npm test`: 1 build + 113 KJV + 440 UI (up from
+437, 3 new checks) — 554 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and
+390px: the tally reads as one line at 1100px in the common (no struggling
+verses) case and with all four clauses present; at 390px the plain
+three-clause tally still fits on one line, and the four-clause tally wraps
+cleanly onto a second line with "needs work" intact, in both light and
+dark palettes, with no horizontal page scroll either way.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-13 — merge the duplicate-reference PR, then undo a saved edit
 
 Found PR #27 open from a previous run ("Refuse a duplicate reference when

@@ -158,7 +158,11 @@
     color: var(--ink-faint);
     letter-spacing: .02em;
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+    /* Not nowrap: each "N label" pair is glued together with its own nbsp
+       (see renderTally()), so the only places left to break are between
+       pairs — letting the line wrap there instead of forcing the whole
+       tally onto one line, which the fourth, conditional "needs work"
+       clause is long enough to overflow a 390px viewport doing. */
   }
   .masthead .tally b { color: var(--ink-soft); font-weight: 500; }
 

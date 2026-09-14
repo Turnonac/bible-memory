@@ -2630,6 +2630,71 @@ const installGatedLookup = () => {
     await ctx.close();
   }
 
+  /* --- the needs-work count reaches the masthead tally too, not just the
+     deck filter — the same isStruggling() predicate, read as a headline
+     number alongside "verses"/"due"/"mastered" --- */
+  {
+    const STRUGGLING_TALLY = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 1, best: 50, last: null, recent: [50] }),
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 1, best: 60, last: null, recent: [60] }),
+        verse({ ref: "Micah 6:8", text: "He hath shewed thee, O man, what is good.",
+                attempts: 3, best: 99, last: null, recent: [96, 97, 99] })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(STRUGGLING_TALLY);
+    eq("the tally names how many verses need work, alongside the other three counts",
+      await page.textContent("#tally"), "3 verses  /  3 due  /  1 mastered  /  2 needs work");
+    await ctx.close();
+  }
+
+  /* --- ...but stays silent about it when nothing is struggling, rather than
+     reading "0 needs work" on every ordinary deck --- */
+  {
+    const NO_STRUGGLERS_TALLY = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 3, best: 99, last: null, recent: [96, 97, 99] }),
+        verse({ ref: "Psalm 46:1", text: PSA })   // never attempted
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const { ctx, page } = await withState(NO_STRUGGLERS_TALLY);
+    eq("no \"needs work\" clause when no verse actually needs work",
+      await page.textContent("#tally"), "2 verses  /  2 due  /  1 mastered");
+    await ctx.close();
+  }
+
+  /* --- the four-clause tally (once "needs work" joins in) is the longest
+     it ever gets -- confirm it doesn't overflow a 390px viewport, which it
+     did the first time this shipped: .masthead .tally's white-space:nowrap
+     clipped "needs work" clean off the right edge instead of wrapping. --- */
+  {
+    const STRUGGLING_TALLY_NARROW = {
+      schema: 2,
+      verses: [
+        verse({ ref: "Genesis 1:1", text: GEN, attempts: 1, best: 50, last: null, recent: [50] }),
+        verse({ ref: "Psalm 46:1", text: PSA, attempts: 1, best: 60, last: null, recent: [60] }),
+        verse({ ref: "Micah 6:8", text: "He hath shewed thee, O man, what is good.",
+                attempts: 3, best: 99, last: null, recent: [96, 97, 99] })
+      ],
+      activeId: "vGenesis11",
+      history: {}
+    };
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await ctx.newPage();
+    await page.goto(url);
+    await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), STRUGGLING_TALLY_NARROW);
+    await page.reload();
+    eq("no horizontal overflow at 390px with all four tally clauses showing",
+      await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), 0);
+    await ctx.close();
+  }
+
   /* --- sorting the deck by due date or reference, independent of search --- */
   {
     // Due dates are relative to today, not hardcoded calendar dates, so this
