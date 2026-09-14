@@ -39,6 +39,23 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Surface the "Needs work" count in the masthead tally. Both **Now** and
+  **Next** were empty tonight (after merging PR #28, see `WORKLOG.md`), so
+  proposed my own item. The "Needs work" deck filter (2026-09-03) has its own
+  `isStruggling()` predicate, but the headline tally next to the wordmark
+  ("N verses / N due / N mastered") never read it — the one deck-health facet
+  the app tracks but never surfaces as a number, unlike the other three.
+  `renderTally()` now appends "&nbsp;/&nbsp; N needs work", omitted entirely
+  at zero rather than always shown like the other three clauses, since zero
+  is the deck's ordinary resting state and showing it on every visit would
+  be noise. Caught my own regression before shipping: the fourth clause is
+  long enough to overflow `.masthead .tally`'s `white-space: nowrap` at
+  390px, clipping "needs work" clean off the right edge — confirmed visually
+  in the harness, not just by reasoning about the CSS. Fixed by dropping
+  `nowrap` and instead gluing each "N label" pair (and the two words of
+  "needs work" itself) together with their own `&nbsp;`, so the line can
+  only ever wrap *between* clauses, never split a number from its label or a
+  label's own words. *(2026-09-14)*
 - [x] Undo a saved edit. Both **Now** and **Next** were empty tonight, so
   proposed my own item. Removal (2026-09-05) and reset (2026-09-07) each got
   a six-second undo grace window because both destroy real, irreplaceable

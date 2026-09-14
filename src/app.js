@@ -1053,8 +1053,23 @@
 
   function renderTally() {
     const mastered = state.verses.filter(isMastered).length;
-    $("tally").innerHTML = "<b>" + state.verses.length + "</b> verses &nbsp;/&nbsp; <b>" +
-      dueVerses().length + "</b> due &nbsp;/&nbsp; <b>" + mastered + "</b> mastered";
+    const struggling = state.verses.filter(isStruggling).length;
+    // Each "N label" pair is glued with its own &nbsp; (not just the &nbsp;
+    // around the "/" separators) so a narrow viewport can only ever wrap
+    // *between* pairs, never split a bare number from its label onto two
+    // lines — the four-clause line (once "needs work" joins in) is too long
+    // to fit unbroken at 390px, and .masthead .tally is deliberately not
+    // white-space:nowrap for exactly that reason.
+    $("tally").innerHTML = "<b>" + state.verses.length + "</b>&nbsp;verses &nbsp;/&nbsp; <b>" +
+      dueVerses().length + "</b>&nbsp;due &nbsp;/&nbsp; <b>" + mastered + "</b>&nbsp;mastered" +
+      // Only appended when there's actually something to act on — the same
+      // "needs work" predicate the deck filter (2026-09-03) already reads,
+      // surfaced as a headline count for the first time. Omitted at zero
+      // rather than always shown like the other three: unlike "due" or
+      // "mastered", zero is the deck's ordinary resting state here, and
+      // showing it every time would just be noise on every deck without a
+      // struggling verse (typically all of them, most of the time).
+      (struggling ? " &nbsp;/&nbsp; <b>" + struggling + "</b>&nbsp;needs&nbsp;work" : "");
   }
 
   function renderQueue() {
