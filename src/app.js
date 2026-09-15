@@ -976,21 +976,32 @@
       const drop = el("button", "drop");
       drop.type = "button";
       drop.textContent = "remove";
-      drop.setAttribute("aria-label", "Remove " + v.ref + " from the deck");
-      drop.addEventListener("click", ev => {
-        ev.stopPropagation();
-        if (drop.dataset.armed !== "1") {
-          drop.dataset.armed = "1";
-          drop.textContent = "remove?";
-          setTimeout(() => {
-            if (!drop.isConnected) return;
-            drop.dataset.armed = "";
-            drop.textContent = "remove";
-          }, ARM_MS);
-          return;
-        }
-        removeVerse(v.id);
-      });
+      // removeVerse() itself refuses to empty the deck — without this, the
+      // last remaining verse's "remove" control would still arm to
+      // "remove?" on a first click, then silently do nothing on the
+      // confirming second click, with no way for a reader to tell "nothing
+      // happened" apart from "I mis-clicked."
+      if (state.verses.length === 1) {
+        drop.disabled = true;
+        drop.title = "Your deck needs at least one verse — add another before removing this one.";
+        drop.setAttribute("aria-label", "Can't remove " + v.ref + " — it's the only verse left in your deck.");
+      } else {
+        drop.setAttribute("aria-label", "Remove " + v.ref + " from the deck");
+        drop.addEventListener("click", ev => {
+          ev.stopPropagation();
+          if (drop.dataset.armed !== "1") {
+            drop.dataset.armed = "1";
+            drop.textContent = "remove?";
+            setTimeout(() => {
+              if (!drop.isConnected) return;
+              drop.dataset.armed = "";
+              drop.textContent = "remove";
+            }, ARM_MS);
+            return;
+          }
+          removeVerse(v.id);
+        });
+      }
       const statActions = el("span", "stat-actions");
       statActions.appendChild(edit);
       // Resetting is only meaningful once there's something to reset — a verse

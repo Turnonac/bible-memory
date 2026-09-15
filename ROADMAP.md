@@ -39,6 +39,12 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] The last remaining verse's "remove" control no longer arms to a dead
+  "remove?" confirm. `removeVerse()` has always refused to empty the deck,
+  but the card's own control never said so — clicking it on a one-verse
+  deck armed exactly like any other card, then silently did nothing on the
+  confirming click. Now disabled outright on the sole remaining card, with
+  a title/aria-label naming why. *(2026-09-15)*
 - [x] Surface the "Needs work" count in the masthead tally. Both **Now** and
   **Next** were empty tonight (after merging PR #28, see `WORKLOG.md`), so
   proposed my own item. The "Needs work" deck filter (2026-09-03) has its own
