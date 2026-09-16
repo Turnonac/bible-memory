@@ -39,6 +39,41 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Export shows a visible "Exporting…" state instead of guarding silently.
+  Both **Now** and **Next** were empty tonight; found by the same read-through
+  that surfaced the previous night's last-verse-remove fix. `exportDeck()` has
+  guarded against a second click with an `exporting` boolean since the
+  `downloads` capability shipped, but the button itself never reflected it —
+  a click during the (possibly multi-second) OS save dialog looked identical
+  to a click that did nothing at all, the same "guard exists, control doesn't
+  say so" gap #30 fixed for "remove" on a one-verse deck. `exportBtn` now
+  disables and reads "Exporting…" for the same window the guard already
+  covers, restored in the existing `finally` block on every exit path
+  (success, declined, or a real save error) — the same idiom "Look up" and
+  "Add several at once" already use for their own in-flight async calls. A
+  new `.btn:disabled` rule (opacity, default cursor) gives every disabled
+  `.btn` variant the same dimmed look, not just this one. Disabling turned
+  out to be a *stronger* guard than the boolean alone: a native disabled
+  button can't dispatch a click at all, not even a programmatic one, so the
+  re-entrancy test now proves that directly rather than racing two
+  `page.click()` calls against a fixed timeout — rewritten with a
+  test-controlled `window.__releaseSave` so the pending window is
+  deterministic rather than timing-dependent. Self-review (`code-review`
+  skill) found no defects; noted but deliberately left alone: `doLookup`,
+  `addManyForm`'s loop, and this fix now all hand-roll the same "disable,
+  relabel, restore" pattern three times with no shared helper — a real
+  duplication, but factoring it means touching two already-working call
+  sites for a refactor this item didn't call for, not fixing a bug. `npm
+  test`: 1 build + 113 KJV + 447 UI (up from 444, 3 new checks, one of them
+  a strict superset of the two it replaced) — 561 total. Mutation-tested by
+  reverting the disable/relabel/restore lines: exactly the new "disables and
+  names what it's doing" check failed, the other two passed vacuously (a
+  button that's never disabled trivially reads as "re-enabled"), confirming
+  which check actually carries the fix. Verified in the harness (real
+  Chromium) in both themes at 1100px and 390px with a held-open mock save:
+  the button dims and reads "Exporting…" without shifting the toolbar row,
+  wraps cleanly alongside "Share deck"/"Import" at the narrow width in both
+  palettes, and raises no page errors. *(2026-09-16)*
 - [x] The last remaining verse's "remove" control no longer arms to a dead
   "remove?" confirm. `removeVerse()` has always refused to empty the deck,
   but the card's own control never said so — clicking it on a one-verse
