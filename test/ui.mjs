@@ -3434,6 +3434,53 @@ const installGatedLookup = () => {
   await ctx.close();
 }
 
+/* ================= the last verse in the deck can't be removed =========== */
+{
+  // removeVerse() has always refused to empty the deck entirely (`if
+  // (state.verses.length === 1) return;`), but nothing on the card ever
+  // said so — the "remove" control still armed to "remove?" on a first
+  // click, then did nothing at all on the confirming second click, leaving
+  // a reader with no way to tell a silent no-op apart from a mis-click.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(url);
+
+  const payload = {
+    schema: 2,
+    verses: [{
+      id: "vOnly", ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want.",
+      source: "kjv", attempts: 0, best: 0, last: null, recent: [],
+      ease: 2.5, reps: 0, interval: 0, due: null
+    }],
+    activeId: "vOnly",
+    history: {}
+  };
+  await page.evaluate(p => localStorage.setItem("verse-by-heart:v1", JSON.stringify(p)), payload);
+  await page.reload();
+
+  const drop = page.locator(".card").first().locator(".drop");
+  eq("the only verse's remove control starts disabled", await drop.isDisabled(), true);
+  eq("...and reads its ordinary label, not an armed one", await drop.textContent(), "remove");
+  const label = await drop.getAttribute("aria-label");
+  check(`...and its accessible name explains why (got "${label}")`,
+    label !== null && label.includes("only verse"));
+
+  // A disabled button has no click handler attached at all (the branch that
+  // arms/confirms it never runs) — confirmed directly rather than assumed,
+  // since a real browser also refuses to dispatch "click" at a disabled
+  // button even via .click() in the page's own script.
+  const clicked = await page.evaluate(() => {
+    let fired = false;
+    const btn = document.querySelector(".card .drop");
+    btn.addEventListener("click", () => { fired = true; });
+    btn.click();
+    return fired;
+  });
+  check("a disabled control dispatches no click at all", !clicked);
+
+  await ctx.close();
+}
+
 /* ============================ layout and a11y =========================== */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });

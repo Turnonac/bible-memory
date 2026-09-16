@@ -3,6 +3,74 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-15 — the last verse can't be silently un-removable
+
+No open PRs from previous runs (`mcp__github__list_pull_requests` returned
+none), `main` was already green (554 total: 1 build + 113 KJV + 440 UI), and
+`ROADMAP.md`'s **Now** and **Next** were both empty, so — per the working
+agreement — proposed my own item. Read `src/app.js` end to end looking for a
+real gap rather than an invented one, since the searchable-library and
+undo/reset/edit threads both look essentially closed after a dozen-plus
+nights of work on them.
+
+`removeVerse()` has refused to empty the deck entirely since the app's
+first night — `if (state.verses.length === 1) return;` — but nothing built
+on top of that guard in the eleven nights since ever told the card's own
+"remove" control about it. The control's arm-then-confirm click sequence
+(the same pattern "reset" shares) runs identically whether or not the click
+will actually do anything: on a deck down to its last verse, a first click
+still arms it to "remove?" and a second, confirming click still calls
+`removeVerse()` — which then does nothing at all, silently, leaving the
+reader with no way to tell "the app just declined my request" apart from
+"I mis-clicked and need to try again." `grep`ing `test/ui.mjs` for anything
+that ever shrinks a deck down to one verse came back empty — every existing
+removal test starts from the 28-verse starter deck or a multi-verse
+fixture, so this path had never actually been exercised, tested, or seen.
+
+Fixed at the point the gap actually lives, the card's own rendering, rather
+than adding a message after the fact: `renderDeck()` now renders the "remove"
+control disabled outright when it's the only verse left, with a `title`
+tooltip and an `aria-label` explaining why ("Can't remove ‹ref› — it's the
+only verse left in your deck.") instead of the ordinary "Remove ‹ref› from
+the deck." No new CSS token — reuses `--ink-faint`, already defined on bare
+`:root` per CLAUDE.md's three-theme-states rule — with a small `:disabled`
+rule so the existing `:hover`/`[data-armed]` styling (madder red, underline)
+doesn't fire on a control that can no longer act. Deliberately scoped to
+just the "remove" control: "reset" isn't affected by this guard at all (it
+only appears once a verse has at least one attempt, and resetting the last
+verse is exactly as legitimate as resetting any other), and "edit" has no
+such restriction either.
+
+**Self-review (`code-review` skill) found no defects.** It traced
+`renderDeck()`'s new branch against `removeVerse()`'s own guard, confirmed
+the disabled state reuses an existing token rather than introducing a new
+one needing all three theme blocks, and checked the native `title` tooltip
+matches the convention other buttons on the page already use for
+supplementary explanation.
+
+Mutation-tested by reverting the fix entirely (the disabled branch, back to
+the plain always-clickable control) and rerunning just the new test: two of
+the three new assertions failed exactly as expected — `expected true, got
+false` for the disabled check, and the aria-label came back as the ordinary
+"Remove Psalm 23:1 from the deck" rather than naming why it can't happen;
+the third assertion ("reads its ordinary label, not an armed one") happened
+to still pass unmutated, since the reverted control's un-clicked label text
+is identical either way — a plain string match alone wouldn't have caught
+this regression, which is why the dispatched-click and disabled-state
+checks carry the real weight of this test. Restored and confirmed 444/444
+UI again. `npm test`: 1 build + 113 KJV + 444 UI (up from 440, 4 new
+checks) — 558 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and at
+390px, seeded with a one-verse deck: the "remove" control renders visibly
+dimmer than "edit" beside it in both palettes, the title tooltip and
+aria-label read correctly, no page errors are raised, and the layout is
+identical to the ordinary multi-verse card (no reflow, no reset control
+shown since this fixture's verse has no attempts yet — an orthogonal,
+pre-existing rule this change doesn't touch).
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-14 — merge the undo-edit PR, then surface "needs work" in the tally
 
 Found PR #28 open from a previous run ("Offer undo after saving a verse

@@ -799,6 +799,13 @@
   .card .stat .reset-progress[data-armed="1"] { color: var(--orpiment); }
   .card .stat .drop:hover { color: var(--madder); text-decoration: underline; }
   .card .stat .drop[data-armed="1"] { color: var(--madder); }
+  .card .stat .drop:disabled,
+  .card .stat .drop:disabled:hover {
+    color: var(--ink-faint);
+    opacity: .5;
+    cursor: default;
+    text-decoration: none;
+  }
 
   /* ---------- deck card edit form ---------- */
   .card.editing { cursor: auto; }
