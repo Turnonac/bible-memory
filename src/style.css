@@ -331,6 +331,14 @@
     border-color: var(--madder);
     color: var(--on-accent);
   }
+  /* An in-flight async action ("Look up", "Add several at once", Export)
+     disables its own button rather than only guarding silently against a
+     second click — this is the one place that dimming shows, so every one
+     of them reads the same way regardless of which .btn variant it is. */
+  .btn:disabled, .btn:disabled:hover {
+    opacity: .6;
+    cursor: default;
+  }
 
   .hint {
     font-size: .75rem;

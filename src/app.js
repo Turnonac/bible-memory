@@ -1739,9 +1739,21 @@
   async function exportDeck() {
     // The viewer allows only one undecided save prompt at a time, so a second
     // click while the first is still awaiting confirmation would surface a
-    // spurious "couldn't save" error for a export that's actually fine.
+    // spurious "couldn't save" error for a export that's actually fine. The
+    // exporting flag alone caught that, but said nothing to the reader — a
+    // click during a slow save dialog looked identical to a click that did
+    // nothing at all. Disabling the button for the same window (same idiom
+    // "Look up" and "Add several at once" already use for their own in-flight
+    // async calls) makes the wait visible and, as a native disabled control,
+    // stops a second click from ever reaching this function in the first
+    // place — a stronger guard than the flag alone, which stays only as a
+    // defense against a non-click call path.
     if (exporting) return;
     exporting = true;
+    const btn = $("exportBtn");
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Exporting…";
 
     const data = JSON.stringify(state, null, 2);
     const filename = "verse-by-heart-" + todayKey() + ".json";
@@ -1777,6 +1789,8 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } finally {
       exporting = false;
+      btn.disabled = false;
+      btn.textContent = label;
     }
   }
 

@@ -3,6 +3,87 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-16 — merge the last-verse-remove PR, then make Export show its work
+
+Found PR #30 open from the previous run ("Disable 'remove' on a deck's last
+remaining verse"). `mergeable_state` read "clean," CodeRabbit's review found
+no actionable issues (only the docstring-coverage nitpick this project's
+no-comments style deliberately ignores), and I ran `npm test` myself in a
+worktree rather than trusting the PR body's numbers (558 total: 1 build +
+113 KJV + 444 UI). Read the diff directly — a clean, well-scoped guard that
+disables the "remove" control exactly when `removeVerse()`'s own long-
+standing one-verse floor would otherwise make it a dead arm-then-confirm —
+and squash-merged.
+
+`ROADMAP.md`'s **Now** and **Next** were both empty afterward, so proposed
+my own item. Reading `src/app.js` end to end for a real gap turned up the
+same *class* of bug #30 had just fixed, one function over: `exportDeck()`
+has guarded a second click with a plain `exporting` boolean since the
+`downloads` capability shipped (2026-08-16), returning silently if a save
+was already in flight — but the button itself never said so. A click during
+the (possibly multi-second) OS save dialog was indistinguishable from a
+click that did nothing at all, the exact "the guard exists, the control
+doesn't" gap #30 named explicitly in its own PR body. `exportBtn` now
+disables and reads "Exporting…" for the same window, restored in the
+existing `finally` block on every exit path (success, a declined save, or a
+real save error) — the same disable-relabel-restore idiom "Look up" and
+"Add several at once" already use for their own in-flight async calls, so
+this isn't a new pattern, just a third place that already needed it. Added
+a small `.btn:disabled` CSS rule (opacity, default cursor) so every `.btn`
+variant reads the same dimmed way when disabled, not a one-off just for
+this button.
+
+**Disabling turned out to be a strictly stronger guard than the boolean
+alone, which broke one existing test's own mechanism and required rewriting
+it, not just extending it.** The pre-existing "export re-entrancy" test
+fired two `page.click("#exportBtn")` calls back to back and asserted only
+one `save()` call happened, relying on the click racing ahead of the
+`exporting` flag's reset. Once the button is a real disabled control,
+Playwright's own actionability check makes a second `page.click()` block
+until the button re-enables — by which point the first save has already
+finished and `exporting` is already `false`, so the "second" click is no
+longer a race at all, just a legitimate follow-up export, and the old
+assertion (`saveCalls === 1`) would have failed for a reason that has
+nothing to do with a regression. Confirmed this by hand in a scratch script
+against a bare disabled button before touching the real test: a disabled
+button dispatches *no* click event at all, not even from a raw programmatic
+`.click()` call — which is actually the stronger, more direct thing to
+assert. Rewrote the test to drive `document.getElementById("exportBtn").click()`
+straight at the disabled button while a save is deliberately held open (via
+a test-controlled `window.__releaseSave`, replacing a fixed 200ms
+`setTimeout` with something deterministic), proving no second `save()` call
+is even reachable, then releases the mock and confirms the button re-enables
+and its label restores. Also added a same-window restore assertion to the
+existing "export capability" test, so the ordinary happy path is checked
+too, not just the pending and error branches.
+
+Self-review (`code-review` skill) found no correctness defects. It flagged
+one real but out-of-scope duplication: `doLookup`, the `addManyForm` lookup
+loop, and this fix now all hand-roll the same "disable, relabel, restore"
+sequence three times with no shared helper, and `addManyForm`'s own restore
+sits inline rather than in a `finally` the way this fix's does. Left alone
+deliberately — factoring a shared helper would mean touching two other
+already-working call sites for a refactor this item didn't ask for, not
+fixing a bug; noted here in case a future night wants to pick it up as its
+own small item.
+
+Mutation-tested by reverting the disable/relabel/restore lines in
+`exportDeck()`: exactly the new "the export button disables and names what
+it's doing while a save is pending" check failed; the "capability restore"
+and "re-enables" checks passed vacuously (a button that's never disabled
+trivially still reads `!disabled`), confirming which check actually carries
+the fix rather than all three coincidentally passing either way. Restored
+and confirmed 447/447 UI again. `npm test`: 1 build + 113 KJV + 447 UI (up
+from 444, 3 new checks — one a strict superset of the two it replaced) —
+561 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and 390px
+with a held-open mock save: the button dims and reads "Exporting…" without
+shifting the "Share deck"/"Import" toolbar row, wraps cleanly alongside them
+at the narrow width in both palettes, and raises no page errors.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-15 — the last verse can't be silently un-removable
 
 No open PRs from previous runs (`mcp__github__list_pull_requests` returned

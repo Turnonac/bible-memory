@@ -1112,15 +1112,23 @@ let sharedHash;
   check("the capability payload is the whole deck", Array.isArray(parsed.verses) && parsed.verses.length > 0);
   eq("the anchor-download fallback is skipped once the capability exists",
     await page.evaluate(() => window.__anchorDownloadClicks), 0);
+  check("the export button reads its ordinary label again once the save settles",
+    await page.evaluate(() => !document.getElementById("exportBtn").disabled &&
+      document.getElementById("exportBtn").textContent === "Export"));
   await ctx.close();
 }
 
 /* ============================ export re-entrancy ========================= */
 {
-  // The viewer allows only one undecided save prompt at a time, so clicking
-  // Export again while the first prompt is still pending must not fire a
-  // second save() call — that would surface a spurious error for an export
-  // that's actually fine.
+  // The viewer allows only one undecided save prompt at a time. Export now
+  // disables its own button for that same window (the same idiom "Look up"
+  // and "Add several at once" already use for their own in-flight async
+  // calls) rather than only guarding silently against a second click, so a
+  // save still pending is visible, not indistinguishable from a click that
+  // did nothing. A disabled native button can't dispatch a click at all —
+  // not even a programmatic one — so this is a stronger guarantee than the
+  // exporting flag alone gave: there's no second save to race, because there
+  // is no way to reach exportDeck() a second time while the first is open.
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
   const page = await ctx.newPage();
   const dialogs = [];
@@ -1131,7 +1139,7 @@ let sharedHash;
       use: async name => name === "downloads" ? {
         save: async () => {
           window.__saveCalls++;
-          await new Promise(r => setTimeout(r, 200));
+          await new Promise(r => { window.__releaseSave = r; });
           return { status: "saved" };
         }
       } : null
@@ -1140,11 +1148,24 @@ let sharedHash;
   await page.goto(url);
 
   await page.click("#exportBtn");
-  await page.click("#exportBtn");
-  await page.waitForTimeout(400);
+  await page.waitForFunction(() => window.__saveCalls === 1);
 
-  eq("a second click while a save is pending doesn't start a second save", await page.evaluate(() => window.__saveCalls), 1);
+  check("the export button disables and names what it's doing while a save is pending",
+    await page.evaluate(() => document.getElementById("exportBtn").disabled &&
+      document.getElementById("exportBtn").textContent === "Exporting…"));
+
+  // A real second click can't even reach a disabled button; drive it
+  // straight at the element to prove the guard, not just that Playwright's
+  // own actionability wait declined to click it.
+  await page.evaluate(() => document.getElementById("exportBtn").click());
+  eq("clicking the disabled export button while a save is pending starts no second save",
+    await page.evaluate(() => window.__saveCalls), 1);
   check("the pending-save guard raises no error dialog", dialogs.length === 0, dialogs.join(" | "));
+
+  await page.evaluate(() => window.__releaseSave());
+  await page.waitForFunction(() => document.getElementById("exportBtn").textContent === "Export");
+  check("the export button re-enables once the pending save settles",
+    await page.evaluate(() => !document.getElementById("exportBtn").disabled));
   await ctx.close();
 }
 
