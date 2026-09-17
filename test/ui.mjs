@@ -373,6 +373,8 @@ for (const scheme of ["light", "dark"]) {
   await page.click("#addForm button[type=submit]");
   check("a missing reference is refused with a readable message",
     (await page.textContent("#addErr")).length > 10 && (await cards()) === start + 1);
+  check("the add form's error announces itself to screen readers",
+    (await page.getAttribute("#addErr", "role")) === "alert");
 
   // "Add several at once" and deck sharing both dedupe against the reader's
   // existing deck (existingRefSet()) — this original single-verse form had
@@ -1023,6 +1025,8 @@ let sharedHash;
 
   check("the unresolved reference names itself in the error line",
     (await page.textContent("#addManyErr")).includes("Xylophon"));
+  check("the add-many form's error announces itself to screen readers",
+    (await page.getAttribute("#addManyErr", "role")) === "alert");
   eq("only the unresolved reference is left in the textarea for correction",
     await page.inputValue("#manyRefs"), "Xylophon 1:1");
 
@@ -2926,6 +2930,8 @@ const installGatedLookup = () => {
     check("an empty reference is rejected with an inline error",
       (await page.textContent(".card-edit .err")).length > 0);
     check("the form stays open after a rejected save", !!(await page.$(".card-edit")));
+    check("the edit form's error announces itself to screen readers",
+      (await page.getAttribute(".card-edit .err", "role")) === "alert");
 
     // Fewer than two words is rejected.
     await page.fill("#editRef", "Genesis 1:1");

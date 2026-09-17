@@ -812,6 +812,7 @@
     textField.appendChild(textArea);
 
     const err = el("p", "err");
+    err.setAttribute("role", "alert");
 
     // Same re-fetch "Add a verse of your own" offers via its own Look up
     // button (KJV_LOOKUP_SUPPORTED / lookupReference, defined below) — a
