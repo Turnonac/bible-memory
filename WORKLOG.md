@@ -3,6 +3,58 @@
 One entry per nightly run: what was attempted, what shipped, what was learned.
 Newest first. Keep entries short — the PR carries the detail.
 
+## 2026-09-17 — validation errors now announce themselves to screen readers
+
+No open PRs from previous runs, `main` was green (561 total: 1 build + 113
+KJV + 447 UI), and `ROADMAP.md`'s **Now** and **Next** were both empty, so
+proposed my own item, same as the last several nights. Read `src/app.js`
+and `src/markup.html` looking for a real gap rather than an invented one.
+
+Every status message on the page — the speak-it caption, the recite result
+panel, the import status line, the share-copy status, the undo banner, the
+deck search count, the add-many status — carries `aria-live="polite"` so a
+screen reader announces it the moment it changes. The page's three
+validation-error slots never got the same treatment: `#addErr` (the single
+"Add a verse of your own" form), `#addManyErr` ("Add several at once"), and
+the dynamically-built `.card-edit .err` (the inline edit form, shared by
+both its "Look up" and its "Save" validation) have carried plain,
+unannounced `<p class="err">` elements since each form shipped — a sighted
+reader sees the message appear under the field it names, but a screen
+reader user submitting an invalid form hears nothing at all and has no way
+to discover why nothing happened.
+
+Used `role="alert"` rather than `aria-live="polite"` on all three: an
+`alert` region is implicitly assertive (interrupts immediately, unlike a
+polite region that waits for a pause), which is the correct distinction
+from the page's existing status captions — a validation error blocking a
+submission is more urgent than "3 verses added" and should interrupt
+rather than queue. `#addErr`/`#addManyErr` get the attribute directly in
+`src/markup.html`, since they're static; `.card-edit .err` is built fresh
+each time `buildEditForm()` runs (the edit form doesn't exist in the DOM
+until a card's "edit" control is clicked), so it's set once at element
+creation in `src/app.js`, before the element is ever appended or its text
+ever set — the same place the element itself is created, not a
+separate wiring pass that could drift out of sync with it.
+
+Self-review (`code-review` skill) found no defects: attribute-only change,
+set once before content and before append (the correct order for a live
+region to be picked up), no removed behavior, `index.html` rebuilt
+consistently with both edited source files.
+
+Mutation-tested by reverting just the two source files (keeping the new
+tests) and rerunning: exactly the three new checks failed — the fix, not
+something else, is what they depend on. Restored and confirmed 450/450 UI
+again. `npm test`: 1 build + 113 KJV + 450 UI (up from 447, 3 new checks) —
+564 total.
+
+Verified in the harness (real Chromium) in both themes at 1100px and 390px:
+triggered all three forms' validation errors and confirmed `role="alert"`
+is present, the error text reads correctly in both palettes, and no page
+errors are raised. Purely an ARIA attribute — no visual or layout change to
+verify beyond "nothing moved," which the screenshots confirmed.
+
+Republished the Artifact in place with this run's `index.html`.
+
 ## 2026-09-16 — merge the last-verse-remove PR, then make Export show its work
 
 Found PR #30 open from the previous run ("Disable 'remove' on a deck's last

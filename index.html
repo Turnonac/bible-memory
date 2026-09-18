@@ -1159,7 +1159,7 @@
           <label for="newText">Verse text</label>
           <textarea id="newText" placeholder="The LORD is my light and my salvation; whom shall I fear?"></textarea>
         </div>
-        <p class="err" id="addErr"></p>
+        <p class="err" id="addErr" role="alert"></p>
         <div class="actions">
           <button class="btn primary" type="submit">Add to deck</button>
           <button class="btn quiet" type="button" id="clearAdd">Clear</button>
@@ -1174,7 +1174,7 @@
           <label for="manyRefs">References, one per line or comma-separated</label>
           <textarea id="manyRefs" placeholder="John 3:16&#10;Romans 8:28&#10;Psalm 23:1-6"></textarea>
         </div>
-        <p class="err" id="addManyErr"></p>
+        <p class="err" id="addManyErr" role="alert"></p>
         <p class="status" id="addManyStatus" aria-live="polite"></p>
         <div class="actions">
           <button class="btn primary" type="submit" id="addManyBtn">Look up and add</button>
@@ -2010,6 +2010,7 @@ const KJV_DATA_GZ_B64 = "H4sIAAAAAAACA6y9W5Mbx5E2/Ff68412IyAH50gSuGBQMi2OJEoKUw7
     textField.appendChild(textArea);
 
     const err = el("p", "err");
+    err.setAttribute("role", "alert");
 
     // Same re-fetch "Add a verse of your own" offers via its own Look up
     // button (KJV_LOOKUP_SUPPORTED / lookupReference, defined below) — a

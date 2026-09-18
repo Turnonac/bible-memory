@@ -39,6 +39,10 @@ raise them in a PR description or `WORKLOG.md` when the items above run low.
 
 ## Done
 
+- [x] Validation errors on the "Add a verse", "Add several at once", and
+  edit-in-place forms announce themselves to screen readers (`role="alert"`
+  on `#addErr`, `#addManyErr`, and the edit form's own `.err`), matching
+  every other status message on the page. *(2026-09-17)*
 - [x] Export shows a visible "Exporting…" state instead of guarding silently.
   Both **Now** and **Next** were empty tonight; found by the same read-through
   that surfaced the previous night's last-verse-remove fix. `exportDeck()` has
